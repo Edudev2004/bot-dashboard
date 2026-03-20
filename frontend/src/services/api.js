@@ -1,23 +1,15 @@
-import { io } from 'socket.io-client';
+import axios from 'axios';
 
-// Nos conectamos al servidor backend de Socket.IO
-const socket = io('http://localhost:3000', {
-  autoConnect: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
+// Configuramos Axios para apuntar a nuestro servidor backend en el puerto 3000
+const api = axios.create({
+  baseURL: 'http://localhost:3000',
+  timeout: 10000,
 });
 
-// Logs básicos para saber si estamos conectados en tiempo real
-socket.on('connect', () => {
-  console.log('[Socket] ¡Conectados con éxito! ID:', socket.id);
-});
+// Esta función pide todos los mensajes guardados para la carga inicial del dashboard
+export const fetchMessages = async () => {
+  const response = await api.get('/api/messages');
+  return response.data.data;
+};
 
-socket.on('disconnect', () => {
-  console.log('[Socket] Nos hemos desconectado del servidor');
-});
-
-socket.on('connect_error', (error) => {
-  console.error('[Socket] Hubo un error al intentar conectar:', error.message);
-});
-
-export default socket;
+export default api;
