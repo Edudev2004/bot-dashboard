@@ -2,6 +2,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const { saveMessage } = require('../services/firestoreService');
 const { getIO } = require('../sockets/socketManager');
 
+const { detectType, AUTO_REPLIES } = require('../utils/botUtils');
+
 // Obtenemos el token de las variables de entorno (.env)
 const token = process.env.TELEGRAM_TOKEN;
 
@@ -11,26 +13,6 @@ if (!token) {
 
 // Inicializamos el bot de Telegram con polling habilitado
 const bot = new TelegramBot(token, { polling: true });
-
-/**
- * Detectamos el tipo de mensaje buscando palabras clave
- * menu/menú -> menú, pedido/orden -> pedido, otros -> otro
- */
-const detectType = (text = '') => {
-  const lower = text.toLowerCase();
-  if (lower.includes('menu') || lower.includes('menú')) return 'menu';
-  if (lower.includes('pedido') || lower.includes('orden')) return 'pedido';
-  return 'otro';
-};
-
-/**
- * Mensajes de respuesta automática según el tipo
- */
-const AUTO_REPLIES = {
-  menu: '🍽️ ¡Aquí está nuestro menú! Escribe "pedido" para ordenar.',
-  pedido: '✅ ¡Pedido recibido! En breve te contactamos.',
-  otro: '👋 ¡Hola! Escribe "menu" para ver el menú o "pedido" para ordenar.',
-};
 
 // Escuchamos todos los mensajes entrantes
 bot.on('message', async (msg) => {
@@ -43,7 +25,7 @@ bot.on('message', async (msg) => {
 
   try {
     // 1. Lo guardamos en nuestra base de datos Firestore
-    const savedMessage = await saveMessage({ chatId, text, type, date });
+    const savedMessage = await saveMessage({ chatId, text, type, date, source: 'telegram' });
 
     // 2. Emitimos el nuevo mensaje por WebSockets para que el dashboard se auto-actualice
     getIO().emit('new_message', savedMessage);

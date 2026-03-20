@@ -1,0 +1,194 @@
+
+/* ─── TREE EDITOR STYLES ────────────────────────────────────────────────── */
+.tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.tree-node-wrap {
+  position: relative;
+  border-left: 1px dashed var(--border);
+  margin-left: 8px;
+  padding-left: 16px;
+  margin-top: 8px;
+}
+
+.tree-node {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.tree-node:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+.node-main {
+  display: flex;
+  gap: 10px;
+}
+
+.node-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.node-inputs {
+  flex: 1;
+}
+
+.node-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.node-label-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--transition);
+}
+
+.node-label-input:focus {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+
+.node-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.node-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-details label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.node-details textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.node-media {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.upload-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px dashed var(--accent);
+  background: var(--accent-light);
+  transition: var(--transition);
+}
+
+.upload-label:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.media-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+}
+
+.media-pill button {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+}
+
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.node-children {
+  margin-top: 4px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+
+.btn-icon:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.btn-icon.delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}

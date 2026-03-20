@@ -1,17 +1,38 @@
 import { useState } from 'react';
 import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
 import './index.css';
 
 function App() {
   // Estado del tema: 'light' o 'dark'
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+  const [isLoggedIn, setIsLoggedIn] = useState(localStorage.getItem('isLoggedIn') === 'true');
 
-  const toggleTheme = () =>
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+  };
+
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+    localStorage.setItem('isLoggedIn', 'true');
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  };
 
   return (
     <div data-theme={theme} className="app-root">
-      <Dashboard theme={theme} toggleTheme={toggleTheme} />
+      {isLoggedIn ? (
+        <Dashboard theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />
+      ) : (
+        <Login onLogin={handleLogin} />
+      )}
     </div>
   );
 }

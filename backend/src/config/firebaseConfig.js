@@ -8,9 +8,11 @@ const serviceAccount = require(path.join(__dirname, '../../serviceAccountKey.jso
 // Inicializamos la app de Firebase con nuestras credenciales
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
+  storageBucket: `${serviceAccount.project_id}.appspot.com`
 });
 
 // Exportamos la base de datos Firestore para usarla en los servicios
 const db = admin.firestore();
+const storage = admin.storage();
 
-module.exports = { db };
+module.exports = { db, storage };
