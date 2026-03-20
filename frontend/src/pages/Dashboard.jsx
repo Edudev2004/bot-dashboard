@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import '../TreeEditor.css';
+import ChatbotEditor from './ChatbotEditor';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -534,10 +535,11 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
   // Navegación del sidebar
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'messages', icon: MessageSquare, label: 'Mensajes' },
-    { id: 'pedidos', icon: ShoppingCart, label: 'Pedidos' },
-    { id: 'personalized', icon: Settings, label: 'Personalizado' },
-    { id: 'usuarios', icon: Users, label: 'Usuarios' },
+    { id: 'messages',  icon: MessageSquare,  label: 'Mensajes' },
+    { id: 'pedidos',   icon: ShoppingCart,   label: 'Pedidos' },
+    { id: 'botconfig', icon: Bot,            label: '🤖 Bot Config' },
+    { id: 'personalized', icon: Settings,    label: 'Personalizado' },
+    { id: 'usuarios',  icon: Users,          label: 'Usuarios' },
   ];
 
   return (
@@ -748,7 +750,12 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
           />
         )}
 
-        {/* VISTA 4: CONFIGURACIÓN PERSONALIZADA (BOT) */}
+        {/* VISTA 4: BOT CONFIG — Editor de Árbol Dinámico */}
+        {activeNav === 'botconfig' && (
+          <ChatbotEditor />
+        )}
+
+        {/* VISTA 5: CONFIGURACIÓN PERSONALIZADA (BOT LEGACY) */}
         {activeNav === 'personalized' && (
           <div className="config-view">
             {configLoading ? (

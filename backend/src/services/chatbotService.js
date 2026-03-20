@@ -1,68 +1,158 @@
 const { db } = require('../config/firebaseConfig');
+
 const NODES_COLLECTION = 'chatbot_nodes';
 const OPTIONS_COLLECTION = 'chatbot_options';
+const CONFIG_COLLECTION  = 'bot_general_config';
+
+// ─── NODOS ────────────────────────────────────────────────────────────────────
 
 /**
- * Get all nodes for a specific owner, including their options
+ * Obtiene TODOS los nodos y sus opciones de un cliente.
+ * Devuelve un array plano; el árbol se construye en el cliente o en el engine.
  */
-const getFullChatbotTree = async (ownerId) => {
-  const nodesSnapshot = await db.collection(NODES_COLLECTION)
+const getAllNodes = async (ownerId) => {
+  const nodesSnap = await db.collection(NODES_COLLECTION)
     .where('ownerId', '==', ownerId)
     .get();
-  
+
   const nodes = [];
-  for (const doc of nodesSnapshot.docs) {
+  for (const doc of nodesSnap.docs) {
     const nodeData = { id: doc.id, ...doc.data() };
-    const optionsSnapshot = await db.collection(OPTIONS_COLLECTION)
+    const optsSnap = await db.collection(OPTIONS_COLLECTION)
       .where('nodeId', '==', doc.id)
       .orderBy('order')
       .get();
-    
-    nodeData.options = optionsSnapshot.docs.map(o => ({ id: o.id, ...o.data() }));
+    nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
     nodes.push(nodeData);
   }
   return nodes;
 };
 
 /**
- * Save or Update a Node
+ * Construye el árbol jerárquico a partir de los nodos planos.
+ */
+const buildTree = (nodes) => {
+  const map = {};
+  nodes.forEach(n => { map[n.id] = { ...n, children: [] }; });
+
+  const roots = [];
+  nodes.forEach(n => {
+    if (n.parentNodeId && map[n.parentNodeId]) {
+      map[n.parentNodeId].children.push(map[n.id]);
+    } else if (n.isRoot) {
+      roots.unshift(map[n.id]); // root siempre primero
+    } else if (!n.parentNodeId) {
+      roots.push(map[n.id]);
+    }
+  });
+  return roots;
+};
+
+/**
+ * Obtiene el árbol completo del chatbot para un cliente.
+ */
+const getChatbotTree = async (ownerId) => {
+  const nodes = await getAllNodes(ownerId);
+  return buildTree(nodes);
+};
+
+/**
+ * Obtiene un nodo por ID con sus opciones.
+ */
+const getNodeById = async (nodeId) => {
+  const doc = await db.collection(NODES_COLLECTION).doc(nodeId).get();
+  if (!doc.exists) return null;
+  const nodeData = { id: doc.id, ...doc.data() };
+
+  const optsSnap = await db.collection(OPTIONS_COLLECTION)
+    .where('nodeId', '==', nodeId)
+    .orderBy('order')
+    .get();
+  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+  return nodeData;
+};
+
+/**
+ * Obtiene el nodo raíz de un cliente con sus opciones.
+ */
+const getRootNode = async (ownerId) => {
+  const snap = await db.collection(NODES_COLLECTION)
+    .where('ownerId', '==', ownerId)
+    .where('isRoot', '==', true)
+    .limit(1)
+    .get();
+
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  const nodeData = { id: doc.id, ...doc.data() };
+
+  const optsSnap = await db.collection(OPTIONS_COLLECTION)
+    .where('nodeId', '==', doc.id)
+    .orderBy('order')
+    .get();
+  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+  return nodeData;
+};
+
+/**
+ * Crea o actualiza un nodo. Si tiene opciones, las reemplaza en batch.
+ * Campos soportados:
+ *   type: "menu" | "content" | "response"
+ *   message: string
+ *   isRoot: boolean
+ *   parentNodeId: string | null
+ *   responseType: "text" | "image" | "pdf" | "link" | null
+ *   responseContent: string | null  (URL o texto)
+ *   options: [{ label, nextNodeId, order }]
  */
 const saveNode = async (ownerId, nodeData) => {
   const { id, options, ...data } = nodeData;
-  
-  let nodeId = id;
-  const nodeRef = id ? db.collection(NODES_COLLECTION).doc(id) : db.collection(NODES_COLLECTION).doc();
-  nodeId = nodeRef.id;
 
-  // If this node is set as root, unset others
+  const nodeRef = id
+    ? db.collection(NODES_COLLECTION).doc(id)
+    : db.collection(NODES_COLLECTION).doc();
+  const nodeId = nodeRef.id;
+
+  // Si este nodo es root, desmarcar cualquier otro root anterior
   if (data.isRoot) {
-    const roots = await db.collection(NODES_COLLECTION)
+    const existingRoots = await db.collection(NODES_COLLECTION)
       .where('ownerId', '==', ownerId)
       .where('isRoot', '==', true)
       .get();
-    const batch = db.batch();
-    roots.forEach(doc => {
-      if (doc.id !== nodeId) batch.update(doc.ref, { isRoot: false });
+    const rootBatch = db.batch();
+    existingRoots.forEach(doc => {
+      if (doc.id !== nodeId) rootBatch.update(doc.ref, { isRoot: false });
     });
-    await batch.commit();
+    await rootBatch.commit();
   }
 
-  await nodeRef.set({ ...data, ownerId, updatedAt: new Date() }, { merge: true });
+  await nodeRef.set(
+    {
+      ...data,
+      ownerId,
+      responseType: data.responseType || null,
+      responseContent: data.responseContent || null,
+      parentNodeId: data.parentNodeId || null,
+      updatedAt: new Date().toISOString()
+    },
+    { merge: true }
+  );
 
-  // Save options if provided
-  if (options && Array.isArray(options)) {
+  // Reemplazar opciones si se proporcionaron
+  if (Array.isArray(options)) {
     const batch = db.batch();
-    // Delete existing options for this node first to simplify
-    const existingOptions = await db.collection(OPTIONS_COLLECTION).where('nodeId', '==', nodeId).get();
-    existingOptions.forEach(doc => batch.delete(doc.ref));
-    
+    const existing = await db.collection(OPTIONS_COLLECTION)
+      .where('nodeId', '==', nodeId)
+      .get();
+    existing.forEach(doc => batch.delete(doc.ref));
+
     options.forEach((opt, idx) => {
       const optRef = db.collection(OPTIONS_COLLECTION).doc();
       batch.set(optRef, {
         nodeId,
         label: opt.label,
         nextNodeId: opt.nextNodeId || null,
-        order: opt.order || idx
+        order: opt.order !== undefined ? opt.order : idx
       });
     });
     await batch.commit();
@@ -72,66 +162,64 @@ const saveNode = async (ownerId, nodeData) => {
 };
 
 /**
- * Delete a Node and its outbound options
+ * Elimina un nodo, sus opciones salientes y nullifica referencias a él.
  */
 const deleteNode = async (nodeId) => {
   const batch = db.batch();
   batch.delete(db.collection(NODES_COLLECTION).doc(nodeId));
-  
-  const options = await db.collection(OPTIONS_COLLECTION).where('nodeId', '==', nodeId).get();
+
+  const options = await db.collection(OPTIONS_COLLECTION)
+    .where('nodeId', '==', nodeId)
+    .get();
   options.forEach(doc => batch.delete(doc.ref));
 
-  // Also nullify any options pointing to this node
-  const pointingOptions = await db.collection(OPTIONS_COLLECTION).where('nextNodeId', '==', nodeId).get();
-  pointingOptions.forEach(doc => batch.update(doc.ref, { nextNodeId: null }));
+  const pointing = await db.collection(OPTIONS_COLLECTION)
+    .where('nextNodeId', '==', nodeId)
+    .get();
+  pointing.forEach(doc => batch.update(doc.ref, { nextNodeId: null }));
 
   await batch.commit();
 };
 
+// ─── CONFIGURACIÓN GENERAL ───────────────────────────────────────────────────
+
 /**
- * Get Root Node for navigation
+ * Obtiene la configuración general del bot (saludo, fallback, keywords).
  */
-const getRootNode = async (ownerId) => {
-  const snapshot = await db.collection(NODES_COLLECTION)
-    .where('ownerId', '==', ownerId)
-    .where('isRoot', '==', true)
-    .limit(1)
-    .get();
-    
-  if (snapshot.empty) return null;
-  const doc = snapshot.docs[0];
-  const nodeData = { id: doc.id, ...doc.data() };
-  
-  const optionsSnapshot = await db.collection(OPTIONS_COLLECTION)
-    .where('nodeId', '==', doc.id)
-    .orderBy('order')
-    .get();
-    
-  nodeData.options = optionsSnapshot.docs.map(o => ({ id: o.id, ...o.data() }));
-  return nodeData;
+const getChatbotGeneralConfig = async (ownerId) => {
+  const doc = await db.collection(CONFIG_COLLECTION).doc(ownerId).get();
+  if (!doc.exists) {
+    return {
+      ownerId,
+      greeting: '¡Hola! 👋 ¿En qué podemos ayudarte hoy?',
+      fallbackMessage: 'No entiendo tu consulta. Escribe *0* para volver al inicio.',
+      keywords: []
+    };
+  }
+  return { id: doc.id, ...doc.data() };
 };
 
 /**
- * Get specific node by ID
+ * Guarda o actualiza la configuración general del bot.
  */
-const getNodeById = async (nodeId) => {
-  const doc = await db.collection(NODES_COLLECTION).doc(nodeId).get();
-  if (!doc.exists) return null;
-  const nodeData = { id: doc.id, ...doc.data() };
-  
-  const optionsSnapshot = await db.collection(OPTIONS_COLLECTION)
-    .where('nodeId', '==', nodeId)
-    .orderBy('order')
-    .get();
-    
-  nodeData.options = optionsSnapshot.docs.map(o => ({ id: o.id, ...o.data() }));
-  return nodeData;
+const setChatbotGeneralConfig = async (ownerId, config) => {
+  const data = {
+    ...config,
+    ownerId,
+    updatedAt: new Date().toISOString()
+  };
+  await db.collection(CONFIG_COLLECTION).doc(ownerId).set(data, { merge: true });
+  return data;
 };
 
 module.exports = {
-  getFullChatbotTree,
+  getAllNodes,
+  getChatbotTree,
+  getNodeById,
+  getRootNode,
   saveNode,
   deleteNode,
-  getRootNode,
-  getNodeById
+  getChatbotGeneralConfig,
+  setChatbotGeneralConfig,
+  buildTree
 };

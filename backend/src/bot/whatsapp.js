@@ -1,26 +1,17 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const { 
-  saveMessage, 
-  getMessagesByOwner, 
-  getBotConfig,
-  getSession,
-  setSession,
-  clearSession 
-} = require('../services/firestoreService');
-const { getIO } = require('../sockets/socketManager');
+const { saveMessage, getMessagesByOwner } = require('../services/firestoreService');
+const { getIO }    = require('../sockets/socketManager');
 const { detectType } = require('../utils/botUtils');
+const { processMessage, preloadCache, invalidateCache } = require('./chatbotEngine');
 const QRCode = require('qrcode');
 
 // Almacén de clientes activos (uno por usuario)
 const bots = new Map();
-// Caché de configuraciones en memoria para mayor velocidad
-const botConfigs = new Map();
 
 /**
- * Inicia o retorna un bot para un usuario específico (userId)
+ * Inicia o retorna un bot de WhatsApp para un usuario específico.
  */
 const initBotForUser = async (userId) => {
-    // Si ya existe y está activo, lo retornamos
     if (bots.has(userId)) return bots.get(userId);
 
     console.log(`[Bot Manager] Iniciando bot para usuario: ${userId}`);
@@ -35,18 +26,14 @@ const initBotForUser = async (userId) => {
         }
     });
 
-    // Guardamos en el mapa
     bots.set(userId, client);
 
-    // Precargamos la configuración del bot (Menú)
-    try {
-        const config = await getBotConfig(userId);
-        botConfigs.set(userId, config);
-    } catch (err) {
-        console.error(`[WhatsApp ${userId}] Error cargando menú:`, err.message);
-    }
+    // Pre-cargar árbol y config del cliente en caché
+    preloadCache(userId).catch(err =>
+        console.error(`[WhatsApp ${userId}] Error al precargar caché:`, err.message)
+    );
 
-    // --- EVENTOS DEL CLIENTE ---
+    // ─── Eventos ──────────────────────────────────────────────────────────────
 
     client.on('qr', async (qr) => {
         try {
@@ -66,163 +53,66 @@ const initBotForUser = async (userId) => {
     client.on('message', async (msg) => {
         if (msg.from === 'status@broadcast') return;
 
-        const chatId = msg.from;
-        const body = (msg.body || '').trim();
-        const text = body.toLowerCase();
-        const date = new Date().toISOString();
+        const chatId  = msg.from;
+        const body    = (msg.body || '').trim();
+        const date    = new Date().toISOString();
 
         try {
             // 1. Guardar y emitir mensaje al Dashboard
-            const savedMessage = await saveMessage({ 
-                chatId: chatId.split('@')[0], 
-                text: msg.body, 
-                type: detectType(text), 
-                date, 
+            const savedMessage = await saveMessage({
+                chatId: chatId.split('@')[0],
+                text: body,
+                type: detectType(body.toLowerCase()),
+                date,
                 source: 'whatsapp',
-                ownerId: userId 
+                ownerId: userId
             });
             getIO().to(`user_${userId}`).emit('new_message', savedMessage);
 
-            // 2. Lógica del Chatbot Dinámico
-            const config = botConfigs.get(userId);
-            if (!config || msg.isStatus) return;
+            // 2. Procesar con el motor del chatbot
+            const { text, mediaUrl, mediaType } = await processMessage(userId, chatId, body);
 
-            const session = await getSession(userId, chatId);
-            const tree = config.tree || []; // El árbol de opciones
-            
-            // --- NAVEGACIÓN ---
-            let response = null;
-            let mediaUrl = null;
-            let mediaType = null;
-            let newPath = session.currentPath;
+            if (!text && !mediaUrl) return;
 
-            // Opción de resetear o volver al inicio
-            if (text === 'hola' || text === 'inicio' || text === 'menu' || text === '0') {
-                newPath = 'root';
-                response = `${config.greeting}\n\n${formatMenu(tree)}`;
-                await setSession(userId, chatId, 'root');
-                await client.sendMessage(chatId, response);
-                return;
-            }
-
-            // Si es un número, intentamos navegar
-            const selectedIndex = parseInt(body) - 1;
-            if (!isNaN(selectedIndex)) {
-                // Buscamos las opciones disponibles en el nivel actual
-                const currentOptions = getCurrentLevelOptions(tree, session.currentPath);
-                const selectedOption = currentOptions[selectedIndex];
-
-                if (selectedOption) {
-                    response = selectedOption.content || selectedOption.label;
-                    mediaUrl = selectedOption.mediaUrl;
-                    mediaType = selectedOption.mediaType;
-
-                    // Si tiene submenú, lo mostramos y actualizamos el path
-                    if (selectedOption.children && selectedOption.children.length > 0) {
-                        response += `\n\n${formatMenu(selectedOption.children)}`;
-                        newPath = selectedOption.id; // Podría ser jerárquico ej: '1.2'
-                    } else {
-                        // Si es una hoja, volvemos a root o nos quedamos ahí? 
-                        // Por ahora volvemos a root tras mostrar la respuesta final
-                        response += `\n\n_Escribe *0* para volver al inicio._`;
-                        newPath = 'root';
-                    }
-                    await setSession(userId, chatId, newPath);
-                } else {
-                    response = `⚠️ Opción no válida. Por favor, elige un número del 1 al ${currentOptions.length}.\n\nPara volver al inicio escribe *0*.`;
+            // 3. Enviar respuesta (con media o sin ella)
+            if (mediaUrl) {
+                try {
+                    const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
+                    await client.sendMessage(chatId, media, { caption: text || undefined });
+                } catch (mediaErr) {
+                    console.error(`[WhatsApp ${userId}] Error enviando media:`, mediaErr.message);
+                    if (text) await client.sendMessage(chatId, text);
                 }
             } else {
-                // --- FALLBACK A PALABRAS CLAVE ---
-                const matchedKeyword = (config.keywords || []).find(k => 
-                    text.includes(k.key.toLowerCase())
-                );
-
-                if (matchedKeyword) {
-                    response = matchedKeyword.response;
-                } else {
-                    // Si no hay match y estamos en root, no hacemos nada o mandamos saludo
-                    // Si estamos en un submenú, recordamos las opciones
-                    if (session.currentPath !== 'root') {
-                        const currentOptions = getCurrentLevelOptions(tree, session.currentPath);
-                        response = `No entiendo esa opción.\n\n${formatMenu(currentOptions)}`;
-                    } else {
-                        // En root, ignoramos o mandamos saludo inicial si es muy diferente
-                        // response = config.fallback || "No entiendo tu mensaje.";
-                    }
-                }
+                await client.sendMessage(chatId, text);
             }
 
-            // 3. Enviar Respuesta con Media si aplica
-            if (response) {
-                if (mediaUrl) {
-                    try {
-                        const media = await MessageMedia.fromUrl(mediaUrl);
-                        await client.sendMessage(chatId, media, { caption: response });
-                    } catch (err) {
-                        console.error(`[WhatsApp ${userId}] Error enviando media:`, err.message);
-                        await client.sendMessage(chatId, response);
-                    }
-                } else {
-                    await client.sendMessage(chatId, response);
-                }
-            }
         } catch (error) {
-            console.error(`[WhatsApp ${userId}] Error:`, error.message);
+            console.error(`[WhatsApp ${userId}] Error procesando mensaje:`, error.message);
         }
     });
-
-/**
- * Helper: Formatea un array de opciones como texto: "1. Opción\n2. Opción..."
- */
-function formatMenu(options) {
-    if (!options || options.length === 0) return '';
-    return options.map((opt, i) => `*${i + 1}.* ${opt.label}`).join('\n') + `\n\n*0.* Volver al inicio`;
-}
-
-/**
- * Helper: Busca las opciones del nivel actual basado en el path (ID del nodo padre)
- */
-function getCurrentLevelOptions(tree, path) {
-    if (path === 'root') return tree;
-    // Búsqueda recursiva del nodo por ID
-    const findNode = (nodes, targetId) => {
-        for (const node of nodes) {
-            if (node.id === targetId) return node;
-            if (node.children) {
-                const found = findNode(node.children, targetId);
-                if (found) return found;
-            }
-        }
-        return null;
-    };
-    const node = findNode(tree, path);
-    return node && node.children ? node.children : tree;
-}
 
     client.on('disconnected', (reason) => {
         console.log(`[WhatsApp ${userId}] Desconectado:`, reason);
         getIO().to(`user_${userId}`).emit('whatsapp_status', { connected: false });
+        bots.delete(userId);
     });
 
     client.initialize().catch(err => {
-        console.error(`[WhatsApp ${userId}] Fallo inicialización:`, err.message);
+        console.error(`[WhatsApp ${userId}] Fallo en inicialización:`, err.message);
     });
 
     return client;
 };
 
 /**
- * Configura los escuchas de Socket.IO para WhatsApp
- * Se debe llamar DESPUÉS de initSocket en index.js
+ * Configura los listeners de Socket.IO para WhatsApp.
  */
 const setupWhatsAppSockets = () => {
     getIO().on('connection', (socket) => {
-        // El frontend debe unirse a su propia sala nada más conectar
         socket.on('join_private', (userId) => {
             socket.join(`user_${userId}`);
-            console.log(`[Socket] Usuario ${userId} unido a su sala privada`);
-            
-            // Si el bot de este usuario está listo, le enviamos el estatus actual
+            console.log(`[Socket] Usuario ${userId} unido a sala privada`);
             const client = bots.get(userId);
             if (client) {
                 socket.emit('whatsapp_status', { connected: true });
@@ -236,6 +126,7 @@ const setupWhatsAppSockets = () => {
                     await client.logout();
                     await client.destroy();
                     bots.delete(userId);
+                    invalidateCache(userId);
                     getIO().to(`user_${userId}`).emit('whatsapp_status', { connected: false });
                 } catch (err) {
                     console.error(`[WhatsApp ${userId}] Error al cerrar sesión:`, err.message);
@@ -244,14 +135,12 @@ const setupWhatsAppSockets = () => {
         });
 
         socket.on('whatsapp_reset', async (userId) => {
-            console.log(`[WhatsApp ${userId}] Reintentando conexión...`);
             const client = bots.get(userId);
             try {
                 if (client) {
                     await client.destroy();
                     bots.delete(userId);
                 }
-                // Volvemos a iniciar la instancia
                 initBotForUser(userId);
             } catch (err) {
                 console.error(`[WhatsApp ${userId}] Error al reiniciar bot:`, err.message);
@@ -261,11 +150,11 @@ const setupWhatsAppSockets = () => {
 };
 
 /**
- * Actualiza la caché del bot manualmente (útil tras guardar en el Dashboard)
+ * Invalida la caché del árbol para un cliente (llamar tras guardar nodos/config).
  */
-const updateBotConfigCache = (userId, config) => {
-    botConfigs.set(userId, config);
-    console.log(`[Bot Manager] Caché de configuración actualizada para: ${userId}`);
+const updateBotConfigCache = (userId) => {
+    invalidateCache(userId);
+    console.log(`[Bot Manager] Caché invalidada para usuario: ${userId}`);
 };
 
 module.exports = { initBotForUser, setupWhatsAppSockets, updateBotConfigCache };

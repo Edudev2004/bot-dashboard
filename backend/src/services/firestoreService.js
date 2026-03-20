@@ -2,18 +2,20 @@ const { db, storage } = require('../config/firebaseConfig');
 
 /**
  * --- SESIONES DE USUARIO (WhatsApp) ---
- * Guardamos en qué parte del menú está cada número para cada dueño.
+ * Almacena el nodo actual y el historial de navegación para permitir "volver".
  */
 const getSession = async (ownerId, chatId) => {
   const docId = `${ownerId}_${chatId}`;
   const doc = await db.collection('bot_sessions').doc(docId).get();
-  return doc.exists ? doc.data() : { currentPath: 'root' };
+  return doc.exists
+    ? doc.data()
+    : { currentNodeId: null, navigationStack: [] };
 };
 
-const setSession = async (ownerId, chatId, path) => {
+const setSession = async (ownerId, chatId, sessionData) => {
   const docId = `${ownerId}_${chatId}`;
   await db.collection('bot_sessions').doc(docId).set({
-    currentPath: path,
+    ...sessionData,
     updatedAt: new Date().toISOString()
   }, { merge: true });
 };
