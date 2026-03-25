@@ -14,6 +14,7 @@ const { getSession, setSession }                             = require('../servi
 // ─── Comandos de reset / volver ───────────────────────────────────────────────
 const RESET_COMMANDS  = ['0', 'hola', 'inicio', 'menu', 'menú', 'start'];
 const BACK_COMMANDS   = ['atrás', 'atras', 'volver', 'back', '#'];
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
 // ─── Caché en memoria del árbol por cliente ────────────────────────────────────
 const nodeCache = new Map(); // ownerId → { nodes: {id: node}, ts }
@@ -81,9 +82,9 @@ const buildNodeMessage = (node, includeBackOption = false) => {
       .map((opt, i) => `*${i + 1}.* ${opt.label}`)
       .join('\n');
     if (includeBackOption) {
-      text += '\n*#.* ⬅️ Volver';
+      text += '\n*#.* Atrás';
     }
-    text += '\n*0.* 🏠 Menú principal';
+    text += '\n*0.* Volver';
   }
 
   return text;
@@ -110,56 +111,73 @@ const processMessage = async (ownerId, chatId, userInput) => {
 
   // Cargar sesión
   const session = await getSession(ownerId, chatId);
-  let { currentNodeId, navigationStack = [] } = session;
+  let { currentNodeId, navigationStack = [], updatedAt } = session;
+
+  // Lógica de expiración de sesión (5 minutos de inactividad)
+  const now = Date.now();
+  const lastActive = updatedAt ? new Date(updatedAt).getTime() : 0;
+  if (currentNodeId && (now - lastActive > SESSION_TIMEOUT_MS)) {
+    currentNodeId = null;
+    navigationStack = [];
+  }
 
   // ── 1. Comandos de RESET ─────────────────────────────────────────────────────
   if (RESET_COMMANDS.includes(inputLower)) {
     const rootNode = await getRootNode(ownerId);
     if (!rootNode) {
-      return { text: config.greeting || '¡Hola! 👋', mediaUrl: null, mediaType: null };
+      return { text: config.greeting || '¡Hola! 👋', mediaUrl: null, mediaType: null, nodeId: null };
     }
     await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
-    const text = (currentNodeId === null)
-      ? `${config.greeting || '¡Hola! 👋'}\n\n${buildNodeMessage(rootNode)}`
-      : buildNodeMessage(rootNode);
-    return { text, mediaUrl: null, mediaType: null };
+    const greeting = config.greeting || '¡Hola! 👋';
+    const menu = buildNodeMessage(rootNode);
+    // Evitamos duplicar en el mensaje de reset
+    const text = (currentNodeId === null) 
+      ? (menu.includes(greeting) ? menu : `${greeting}\n\n${menu}`)
+      : menu;
+    return { text, mediaUrl: null, mediaType: null, nodeId: rootNode.id };
   }
 
-  // ── 2. Si no hay sesión activa → mostrar root ─────────────────────────────────
+  // ── 2. Si no hay sesión activa → cualquier mensaje inicia el bot ──────────────
   if (!currentNodeId) {
     const rootNode = await getRootNode(ownerId);
     if (!rootNode) {
       return {
         text: config.greeting || '¡Hola! 👋 Aún no hemos configurado el bot. Vuelve pronto.',
         mediaUrl: null,
-        mediaType: null
+        mediaType: null,
+        nodeId: null
       };
     }
+    const greeting = config.greeting || '¡Hola! 👋';
+    const menu = buildNodeMessage(rootNode);
+    // Evitamos duplicar si el usuario puso lo mismo en el saludo y en el mensaje del nodo raíz
+    const text = menu.includes(greeting) ? menu : `${greeting}\n\n${menu}`;
+    
     await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
     return {
-      text: `${config.greeting || '¡Hola! 👋'}\n\n${buildNodeMessage(rootNode)}`,
+      text,
       mediaUrl: null,
-      mediaType: null
+      mediaType: null,
+      nodeId: rootNode.id
     };
   }
 
   // ── 3. Cargar nodo actual ─────────────────────────────────────────────────────
   const currentNode = await getNode(ownerId, currentNodeId);
   if (!currentNode) {
-    // Nodo eliminado → reiniciar
     const rootNode = await getRootNode(ownerId);
-    if (!rootNode) return { text: config.fallbackMessage, mediaUrl: null, mediaType: null };
+    if (!rootNode) return { text: config.fallbackMessage, mediaUrl: null, mediaType: null, isFallback: true };
     await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
-    return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null };
+    return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null, nodeId: rootNode.id };
   }
 
   // ── 4. Comando VOLVER ────────────────────────────────────────────────────────
   if (BACK_COMMANDS.includes(inputLower)) {
     if (navigationStack.length === 0) {
       const rootNode = await getRootNode(ownerId);
-      if (!rootNode) return { text: config.fallbackMessage, mediaUrl: null, mediaType: null };
+      if (!rootNode) return { text: config.fallbackMessage, mediaUrl: null, mediaType: null, isFallback: true };
       await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
-      return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null };
+      return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null, nodeId: rootNode.id };
     }
     const previousNodeId = navigationStack[navigationStack.length - 1];
     const newStack = navigationStack.slice(0, -1);
@@ -167,10 +185,10 @@ const processMessage = async (ownerId, chatId, userInput) => {
     if (!previousNode) {
       const rootNode = await getRootNode(ownerId);
       await setSession(ownerId, chatId, { currentNodeId: rootNode?.id || null, navigationStack: [] });
-      return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null };
+      return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null, nodeId: rootNode?.id };
     }
     await setSession(ownerId, chatId, { currentNodeId: previousNodeId, navigationStack: newStack });
-    return { text: buildNodeMessage(previousNode, newStack.length > 0), mediaUrl: null, mediaType: null };
+    return { text: buildNodeMessage(previousNode, newStack.length > 0), mediaUrl: null, mediaType: null, nodeId: previousNodeId };
   }
 
   // ── 5. Selección numérica ─────────────────────────────────────────────────────
@@ -201,38 +219,42 @@ const processMessage = async (ownerId, chatId, userInput) => {
       const newStack = [...navigationStack, currentNodeId];
       await setSession(ownerId, chatId, { currentNodeId: nextNode.id, navigationStack: newStack });
 
-      // Nodo tipo response → devolver contenido directo
+      // Nodo tipo response → devolver contenido directo (CONSIDERAMOS ESTO COMO RESUELTO)
       if (nextNode.type === 'response') {
         const responseText = nextNode.message || '';
         const haMedia = nextNode.responseType && nextNode.responseType !== 'text';
 
         let finalText = responseText;
-        if (!haMedia) {
-          finalText += '\n\n_Escribe *0* para volver al inicio o *#* para volver atrás._';
-        } else if (nextNode.responseType === 'link') {
-          finalText += `\n\n🔗 ${nextNode.responseContent}\n\n_Escribe *0* para volver al inicio._`;
+        const confirmation = '\n\n✅ ¿Necesitas algo más? Escribe *0* o una opción del menú.';
+
+        if (nextNode.responseType === 'link') {
+          finalText += `\n\n🔗 ${nextNode.responseContent}${confirmation}`;
+        } else {
+          finalText += confirmation;
         }
 
         return {
           text: finalText,
-          mediaUrl: haMedia && nextNode.responseType !== 'link' ? nextNode.responseContent : null,
-          mediaType: haMedia && nextNode.responseType !== 'link' ? nextNode.responseType : null
+          mediaUrl: (haMedia && nextNode.responseType !== 'link') ? nextNode.responseContent : null,
+          mediaType: (haMedia && nextNode.responseType !== 'link') ? nextNode.responseType : null,
+          nodeId: nextNode.id,
+          isResolved: true
         };
       }
 
-      // Nodo tipo menu o content → mostrar mensaje + opciones
       return {
         text: buildNodeMessage(nextNode, navigationStack.length > 0),
         mediaUrl: null,
-        mediaType: null
+        mediaType: null,
+        nodeId: nextNode.id
       };
     }
 
-    // Opción sin nextNodeId → respuesta inline (texto / media directo en la opción)
     return {
-      text: `${selected.label}\n\n_Escribe *0* para volver al inicio o *#* para volver atrás._`,
+      text: `${selected.label}\n\n✅ ¿Necesitas algo más? Escribe *0* o una opción del menú.`,
       mediaUrl: null,
-      mediaType: null
+      mediaType: null,
+      isResolved: true // Opciones directas sin nodo siguiente también se consideran éxito
     };
   }
 
@@ -243,13 +265,17 @@ const processMessage = async (ownerId, chatId, userInput) => {
   );
 
   if (matched) {
-    return { text: matched.response, mediaUrl: null, mediaType: null };
+    return { text: matched.response, mediaUrl: null, mediaType: null, isResolved: true };
   }
 
   // ── 7. Fallback ───────────────────────────────────────────────────────────────
   const fallback = config.fallbackMessage ||
-    'No entendo tu mensaje. Escribe *0* para ver el menú principal.';
-  return { text: fallback, mediaUrl: null, mediaType: null };
+    'No entiendo tu mensaje. Escribe *0* para ver el menú principal.';
+  
+  // Refrescamos el timestamp de la sesión incluso en fallo para evitar el reset si el usuario sigue intentando
+  await setSession(ownerId, chatId, { currentNodeId, navigationStack });
+  
+  return { text: fallback, mediaUrl: null, mediaType: null, isFallback: true };
 };
 
 module.exports = { processMessage, preloadCache, invalidateCache, buildNodeMessage };

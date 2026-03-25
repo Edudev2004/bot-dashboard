@@ -33,24 +33,23 @@ const clearSession = async (ownerId, chatId) => {
  * Esta función guarda los mensajes en la colección 'messages' de Firestore
  * Recibimos el chatId del usuario, su mensaje, el tipo, la fecha y el OWNER ID
  */
-const saveMessage = async ({ chatId, text, type, date, source, ownerId }) => {
+const saveMessage = async (msgData) => {
+  const { chatId, text, type, date, source, ownerId, nodeId, isResolved, isFallback } = msgData;
   const docRef = await db.collection('messages').add({
     chatId,
     text,
     type,
     date,
     source: source || 'whatsapp',
-    ownerId: ownerId || 'admin', // ID del usuario del dashboard dueño del bot
+    ownerId: ownerId || 'admin',
+    nodeId: nodeId || null,
+    isResolved: !!isResolved,
+    isFallback: !!isFallback,
   });
 
   return {
     id: docRef.id,
-    chatId,
-    text,
-    type,
-    date,
-    source,
-    ownerId,
+    ...msgData
   };
 };
 
@@ -61,13 +60,12 @@ const getMessagesByOwner = async (ownerId) => {
   const snapshot = await db
     .collection('messages')
     .where('ownerId', '==', ownerId)
-    .orderBy('date', 'desc')
     .get();
 
   return snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
-  }));
+  })).sort((a,b) => new Date(b.date) - new Date(a.date));
 };
 
 /**
@@ -103,6 +101,31 @@ const setBotConfig = async (ownerId, config) => {
   return { ownerId, ...config };
 };
 
+/**
+ * --- INSTANCIAS DE BOT ---
+ */
+const getInstances = async (ownerId) => {
+  const doc = await db.collection('bot_instances').doc(ownerId).get();
+  return doc.exists ? doc.data().instances || [] : [];
+};
+
+const saveInstance = async (ownerId, instanceId) => {
+  const admin = require('firebase-admin');
+  await db.collection('bot_instances').doc(ownerId).set({
+    instances: admin.firestore.FieldValue.arrayUnion(instanceId),
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+};
+
+const deleteInstance = async (ownerId, instanceId) => {
+  const admin = require('firebase-admin');
+  await db.collection('bot_instances').doc(ownerId).set({
+    instances: admin.firestore.FieldValue.arrayRemove(instanceId),
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+};
+
+
 module.exports = { 
     saveMessage, 
     getMessagesByOwner, 
@@ -111,5 +134,8 @@ module.exports = {
     getSession,
     setSession,
     clearSession,
+    getInstances,
+    saveInstance,
+    deleteInstance,
     storage
 };

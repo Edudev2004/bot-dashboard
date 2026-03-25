@@ -4,6 +4,8 @@ const express = require('express');
 const cors    = require('cors');
 const multer  = require('multer');
 const jwt     = require('jsonwebtoken');
+const path    = require('path');
+const fs      = require('fs');
 
 const { initSocket }          = require('./sockets/socketManager');
 const { getMessagesByOwner, getBotConfig, setBotConfig, storage } = require('./services/firestoreService');
@@ -20,11 +22,29 @@ const {
 const app    = express();
 const PORT   = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
-const upload = multer({ storage: multer.memoryStorage() });
+
+// --- Configuración de Almacenamiento Local ---
+const storageLocal = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // En un entorno real req.user.id vendría del token ya validado en el endpoint
+        // Pero multer procesa los campos ANTES de que el middleware de auth corra si se usa como middleware directo
+        // Así que usamos una carpeta temporal o base y luego la movemos, o simplemente /uploads
+        const dir = path.join(__dirname, '../public/uploads'); 
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const safeName = file.originalname.replace(/\s+/g, '_');
+        cb(null, `${Date.now()}_${safeName}`);
+    }
+});
+const upload = multer({ storage: storageLocal });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
+// Servir archivos estáticos de la carpeta public
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // ─── Auth Middleware ──────────────────────────────────────────────────────────
 const authenticateToken = (req, res, next) => {
@@ -64,8 +84,8 @@ app.post('/api/login', async (req, res) => {
         const isValid = await verifyPassword(password, user.password);
         if (!isValid) return res.status(401).json({ error: 'Contraseña incorrecta' });
 
-        // Iniciar bot del usuario y precargar caché
-        initBotForUser(user.id);
+        // El bot se iniciará bajo demanda desde el dashboard o al unir el socket
+        // initBotForUser(user.id);
 
         const token = jwt.sign(
             { id: user.id, username: user.username },
@@ -191,45 +211,21 @@ app.post('/api/chatbot/config', authenticateToken, async (req, res) => {
 
 /**
  * POST /api/upload
- * Sube un archivo (PDF, imagen) a Firebase Storage y retorna la URL pública.
+ * Sube un archivo a la carpeta LOCAL (Para no depender de Firebase Storage de pago).
  */
 app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No se subió ningún archivo' });
 
-        const ownerId  = req.user.id;
-        const bucket   = storage.bucket();
-        const safeName = req.file.originalname.replace(/\s+/g, '_');
-        const fileName = `uploads/${ownerId}/${Date.now()}_${safeName}`;
-        const file     = bucket.file(fileName);
+        // Retornamos la URL local (estamos en localhost:3000)
+        const publicUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+        
+        console.log('[Upload] Archivo guardado localmente:', publicUrl);
+        res.json({ url: publicUrl, type: req.file.mimetype });
 
-        const stream = file.createWriteStream({
-            metadata: { contentType: req.file.mimetype }
-        });
-
-        stream.on('error', (err) => {
-            console.error('Upload error:', err);
-            res.status(500).json({ error: 'Error al subir archivo' });
-        });
-
-        stream.on('finish', async () => {
-            try {
-                await file.makePublic();
-                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-                res.json({ url: publicUrl, type: req.file.mimetype });
-            } catch {
-                const [url] = await file.getSignedUrl({
-                    action: 'read',
-                    expires: '03-17-2030'
-                });
-                res.json({ url, type: req.file.mimetype });
-            }
-        });
-
-        stream.end(req.file.buffer);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error inesperado en upload' });
+        console.error('[Upload] Error:', err.message);
+        res.status(500).json({ error: 'Fallo al procesar subida local' });
     }
 });
 

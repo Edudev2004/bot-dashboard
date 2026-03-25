@@ -1,5 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
+  FolderTree,
+  FileText,
+  MessageSquare,
+  Edit2,
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  X,
+  Settings,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Loader2,
+  Bot,
+  AlertTriangle
+} from 'lucide-react';
+import {
   getNodes,
   saveNode,
   deleteNode,
@@ -10,15 +30,15 @@ import {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const NODE_TYPES = [
-  { value: 'menu',     label: '📂 Menú (solo opciones)' },
-  { value: 'content',  label: '📄 Contenido (texto + opciones)' },
-  { value: 'response', label: '💬 Respuesta (hoja del árbol)' }
+  { value: 'menu',     label: 'Menú (solo opciones)' },
+  { value: 'content',  label: 'Contenido (texto + opciones)' },
+  { value: 'response', label: 'Respuesta (hoja del árbol)' }
 ];
 const RESPONSE_TYPES = [
-  { value: 'text',  label: '💬 Texto' },
-  { value: 'pdf',   label: '📄 PDF' },
-  { value: 'image', label: '🖼️ Imagen' },
-  { value: 'link',  label: '🔗 Enlace' }
+  { value: 'text',  label: 'Texto' },
+  { value: 'pdf',   label: 'PDF' },
+  { value: 'image', label: 'Imagen' },
+  { value: 'link',  label: 'Enlace' }
 ];
 
 const emptyNode = () => ({
@@ -53,7 +73,7 @@ function TreeNode({ node, allNodes, onEdit, onAddChild, onDelete, depth = 0 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
 
-  const typeIcon = node.type === 'menu' ? '📂' : node.type === 'content' ? '📄' : '💬';
+  const typeIcon = node.type === 'menu' ? <FolderTree size={18} /> : node.type === 'content' ? <FileText size={18} /> : <MessageSquare size={18} />;
   const typeColor = node.type === 'menu' ? '#6366f1' : node.type === 'content' ? '#f59e0b' : '#10b981';
 
   return (
@@ -63,10 +83,10 @@ function TreeNode({ node, allNodes, onEdit, onAddChild, onDelete, depth = 0 }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
             {hasChildren && (
               <button className="tree-expand-btn" onClick={() => setExpanded(e => !e)}>
-                {expanded ? '▼' : '▶'}
+                {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
             )}
-            <span style={{ fontSize: 18 }}>{typeIcon}</span>
+            <span style={{ color: typeColor }}>{typeIcon}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="tree-node-message">{node.message || '(sin mensaje)'}</div>
               <div className="tree-node-meta">
@@ -79,9 +99,9 @@ function TreeNode({ node, allNodes, onEdit, onAddChild, onDelete, depth = 0 }) {
             </div>
           </div>
           <div className="tree-node-actions">
-            <button className="btn-icon" title="Editar" onClick={() => onEdit(node)}>✏️</button>
-            <button className="btn-icon" title="Agregar hijo" onClick={() => onAddChild(node.id)}>➕</button>
-            <button className="btn-icon btn-danger" title="Eliminar" onClick={() => onDelete(node)}>🗑️</button>
+            <button className="btn-icon" title="Editar" onClick={() => onEdit(node)}><Edit2 size={16} /></button>
+            <button className="btn-icon" title="Agregar hijo" onClick={() => onAddChild(node.id)}><Plus size={16} /></button>
+            <button className="btn-icon btn-danger" title="Eliminar" onClick={() => onDelete(node)}><Trash2 size={16} /></button>
           </div>
         </div>
 
@@ -182,7 +202,7 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
       <div className="modal-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{form.id ? 'Editar Nodo' : 'Nuevo Nodo'}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body">
@@ -228,7 +248,7 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
           {/* Respuesta directa */}
           {showResponse && (
             <div className="form-section">
-              <div className="form-section-title">📦 Contenido de la respuesta</div>
+              <div className="form-section-title">Contenido de la respuesta</div>
               <div className="form-row">
                 <label>Tipo de contenido</label>
                 <select value={form.responseType || 'text'} onChange={e => setField('responseType', e.target.value)}>
@@ -252,10 +272,10 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
                 <div className="form-row">
                   <label>Subir archivo</label>
                   <input type="file" accept={form.responseType === 'pdf' ? '.pdf' : 'image/*'} onChange={handleUpload} disabled={uploading} />
-                  {uploading && <span className="upload-hint">⏳ Subiendo...</span>}
+                  {uploading && <span className="upload-hint"><Loader2 size={14} className="spin" /> Subiendo...</span>}
                   {form.responseContent && !uploading && (
                     <div className="upload-preview">
-                      ✅ Archivo subido: <a href={form.responseContent} target="_blank" rel="noreferrer">Ver archivo</a>
+                      <CheckCircle2 size={14} /> Archivo subido: <a href={form.responseContent} target="_blank" rel="noreferrer">Ver archivo</a>
                     </div>
                   )}
                 </div>
@@ -266,7 +286,7 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
           {/* Opciones del menú */}
           {showOptions && (
             <div className="form-section">
-              <div className="form-section-title">📋 Opciones del menú</div>
+              <div className="form-section-title">Opciones del menú</div>
               {(form.options || []).map((opt, idx) => (
                 <div key={idx} className="option-row">
                   <span className="opt-number">{idx + 1}</span>
@@ -285,11 +305,11 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
                       <option key={n.id} value={n.id}>{n.message?.slice(0, 40) || n.id}</option>
                     ))}
                   </select>
-                  <button type="button" className="btn-icon btn-danger" onClick={() => removeOption(idx)}>🗑️</button>
+                  <button type="button" className="btn-icon btn-danger" onClick={() => removeOption(idx)}><Trash2 size={16} /></button>
                 </div>
               ))}
               <button type="button" className="btn btn-outline btn-sm" onClick={addOption}>
-                ➕ Agregar opción
+                <Plus size={14} /> Agregar opción
               </button>
             </div>
           )}
@@ -297,7 +317,8 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
           <div className="modal-footer">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Guardando...' : '💾 Guardar nodo'}
+              {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              {saving ? ' Guardando...' : ' Guardar nodo'}
             </button>
           </div>
         </form>
@@ -341,10 +362,10 @@ function GeneralConfigPanel({ onClose }) {
     setSaving(true);
     try {
       await saveChatbotConfig(config);
-      setToast('✅ Configuración guardada');
+      setToast(<><CheckCircle2 size={16} /> Configuración guardada</>);
       setTimeout(() => setToast(''), 3000);
     } catch (err) {
-      setToast('❌ Error: ' + err.message);
+      setToast(<><AlertCircle size={16} /> Error: {err.message}</>);
     } finally {
       setSaving(false);
     }
@@ -355,15 +376,15 @@ function GeneralConfigPanel({ onClose }) {
   return (
     <div className="config-panel">
       <div className="config-panel-header">
-        <h3>⚙️ Configuración General del Bot</h3>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Cerrar</button>
+        <h3><Settings size={18} /> Configuración General del Bot</h3>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16} /></button>
       </div>
 
       {toast && <div className="alert-toast">{toast}</div>}
 
       <div className="form-row">
         <label>Mensaje de bienvenida</label>
-        <textarea rows={3} value={config.greeting || ''} onChange={e => setConfig(c => ({ ...c, greeting: e.target.value }))} placeholder="¡Hola! 👋 ¿En qué podemos ayudarte?" />
+        <textarea rows={3} value={config.greeting || ''} onChange={e => setConfig(c => ({ ...c, greeting: e.target.value }))} placeholder="¡Hola! ¿En qué podemos ayudarte?" />
       </div>
 
       <div className="form-row">
@@ -372,20 +393,21 @@ function GeneralConfigPanel({ onClose }) {
       </div>
 
       <div className="form-section">
-        <div className="form-section-title">🔑 Palabras clave</div>
+        <div className="form-section-title">Palabras clave</div>
         {(config.keywords || []).map((kw, i) => (
           <div key={i} className="keyword-row">
             <input type="text" placeholder="Palabra clave" value={kw.key} onChange={e => updateKeyword(i, 'key', e.target.value)} />
             <input type="text" placeholder="Respuesta automática" value={kw.response} onChange={e => updateKeyword(i, 'response', e.target.value)} />
-            <button className="btn-icon btn-danger" onClick={() => removeKeyword(i)}>🗑️</button>
+            <button className="btn-icon btn-danger" onClick={() => removeKeyword(i)}><Trash2 size={16} /></button>
           </div>
         ))}
-        <button className="btn btn-outline btn-sm" onClick={addKeyword}>➕ Agregar palabra clave</button>
+        <button className="btn btn-outline btn-sm" onClick={addKeyword}><Plus size={14} /> Agregar palabra clave</button>
       </div>
 
       <div className="config-panel-footer">
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Guardando...' : '💾 Guardar configuración'}
+          {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+          {saving ? ' Guardando...' : ' Guardar configuración'}
         </button>
       </div>
     </div>
@@ -409,7 +431,7 @@ export default function ChatbotEditor() {
       const data = await getNodes();
       setNodes(data);
     } catch (err) {
-      showToast('❌ Error al cargar nodos: ' + err.message);
+      showToast(<><AlertCircle size={16} /> Error al cargar nodos: {err.message}</>);
     } finally {
       setLoading(false);
     }
@@ -419,18 +441,18 @@ export default function ChatbotEditor() {
 
   const handleSaveNode = async (nodeData) => {
     await saveNode(nodeData);
-    showToast('✅ Nodo guardado correctamente');
+    showToast(<><CheckCircle2 size={16} /> Nodo guardado correctamente</>);
     await loadNodes();
   };
 
   const handleDeleteNode = async (node) => {
     try {
       await deleteNode(node.id);
-      showToast('🗑️ Nodo eliminado');
+      showToast(<><Trash2 size={16} /> Nodo eliminado</>);
       setDeleteTarget(null);
       await loadNodes();
     } catch (err) {
-      showToast('❌ Error al eliminar: ' + err.message);
+      showToast(<><AlertCircle size={16} /> Error al eliminar: {err.message}</>);
     }
   };
 
@@ -446,15 +468,15 @@ export default function ChatbotEditor() {
       {/* Header */}
       <div className="editor-header">
         <div>
-          <h2 className="editor-title">🤖 Editor de Chatbot</h2>
+          <h2 className="editor-title"><Bot size={24} /> Editor de Chatbot</h2>
           <p className="editor-subtitle">Construye el flujo de conversación de tu bot</p>
         </div>
         <div className="editor-header-actions">
           <button className="btn btn-ghost" onClick={() => setShowConfig(v => !v)}>
-            ⚙️ Configuración
+            <Settings size={18} /> Configuración
           </button>
           <button className="btn btn-primary" onClick={() => setEditingNode(emptyNode())}>
-            ➕ Nuevo nodo
+            <Plus size={18} /> Nuevo nodo
           </button>
         </div>
       </div>
@@ -467,14 +489,14 @@ export default function ChatbotEditor() {
       {/* Árbol de nodos */}
       <div className="editor-tree">
         {loading ? (
-          <div className="panel-loading">⏳ Cargando árbol de nodos...</div>
+          <div className="panel-loading"><Loader2 size={18} className="spin" /> Cargando árbol de nodos...</div>
         ) : !hasNodes ? (
           <div className="empty-state">
-            <div className="empty-icon">🌱</div>
+            <div className="empty-icon"><Bot size={48} /></div>
             <h3>Aún no tienes nodos configurados</h3>
             <p>Crea tu primer nodo y empieza a construir el flujo de tu chatbot.</p>
             <button className="btn btn-primary" onClick={() => setEditingNode({ ...emptyNode(), isRoot: true })}>
-              ➕ Crear nodo raíz
+              <Plus size={18} /> Crear nodo raíz
             </button>
           </div>
         ) : (
@@ -508,7 +530,7 @@ export default function ChatbotEditor() {
       {deleteTarget && (
         <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
           <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
-            <h3>⚠️ ¿Eliminar este nodo?</h3>
+            <h3><AlertTriangle size={20} color="#ef4444" /> ¿Eliminar este nodo?</h3>
             <p>Se eliminará <strong>"{deleteTarget.message?.slice(0, 60)}"</strong> y todas sus opciones. Las referencias desde otros nodos quedarán vacías.</p>
             <div className="confirm-actions">
               <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancelar</button>

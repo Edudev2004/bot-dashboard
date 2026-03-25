@@ -1,0 +1,27 @@
+{
+  "name": "bot-dashboard",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "npm run dev --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://Edudev2004@github.com/Edudev2004/bot-dashboard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Edudev2004/bot-dashboard/issues"
+  },
+  "homepage": "https://github.com/Edudev2004/bot-dashboard#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

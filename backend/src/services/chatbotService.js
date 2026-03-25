@@ -20,9 +20,9 @@ const getAllNodes = async (ownerId) => {
     const nodeData = { id: doc.id, ...doc.data() };
     const optsSnap = await db.collection(OPTIONS_COLLECTION)
       .where('nodeId', '==', doc.id)
-      .orderBy('order')
       .get();
-    nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+    nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }))
+      .sort((a,b) => (a.order || 0) - (b.order || 0));
     nodes.push(nodeData);
   }
   return nodes;
@@ -66,9 +66,9 @@ const getNodeById = async (nodeId) => {
 
   const optsSnap = await db.collection(OPTIONS_COLLECTION)
     .where('nodeId', '==', nodeId)
-    .orderBy('order')
     .get();
-  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }))
+    .sort((a,b) => (a.order || 0) - (b.order || 0));
   return nodeData;
 };
 
@@ -88,9 +88,9 @@ const getRootNode = async (ownerId) => {
 
   const optsSnap = await db.collection(OPTIONS_COLLECTION)
     .where('nodeId', '==', doc.id)
-    .orderBy('order')
     .get();
-  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }));
+  nodeData.options = optsSnap.docs.map(o => ({ id: o.id, ...o.data() }))
+    .sort((a,b) => (a.order || 0) - (b.order || 0));
   return nodeData;
 };
 

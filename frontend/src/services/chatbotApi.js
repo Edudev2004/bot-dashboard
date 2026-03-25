@@ -65,6 +65,9 @@ export const uploadFile = async (file) => {
     headers: { Authorization: `Bearer ${token}` },
     body: form
   });
-  if (!res.ok) throw new Error('Error al subir archivo');
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.details || errorBody.error || 'Error al subir archivo');
+  }
   return res.json(); // { url, type }
 };

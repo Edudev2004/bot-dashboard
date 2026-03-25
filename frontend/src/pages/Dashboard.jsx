@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import '../TreeEditor.css';
-import ChatbotEditor from './ChatbotEditor';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -9,9 +8,12 @@ import {
   CategoryScale,
   LinearScale,
   BarElement,
+  LineElement,
+  PointElement,
 } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
-import { fetchMessages, fetchBotConfig, saveBotConfig, uploadFile } from '../services/api';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { fetchMessages } from '../services/api';
+import { getNodes } from '../services/chatbotApi';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -27,135 +29,31 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
-  Bot,
   MessageCircle,
   Send,
+  Bot,
   Plus,
-  Trash2,
-  Save,
-  ChevronRight,
-  ChevronDown,
-  FileText,
-  Image as ImageIcon,
-  Upload,
+  Clock,
+  Activity,
+  Award,
+  AlertTriangle,
+  UserCheck,
+  Zap,
 } from 'lucide-react';
-
-// ── COMPONENTE: Opción de Árbol (Recursivo) ──────────────────────────
-const TreeOption = ({ option, onUpdate, onDelete, level = 0 }) => {
-  const [isOpen, setIsOpen] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleChange = (field, value) => {
-    onUpdate({ ...option, [field]: value });
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const { url } = await uploadFile(file);
-      handleChange('mediaUrl', url);
-      handleChange('mediaType', file.type.includes('pdf') ? 'pdf' : 'image');
-    } catch (err) {
-      console.error(err);
-      alert('Fallo al subir archivo');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const addChild = () => {
-    const newChildren = [...(option.children || []), { 
-      id: Math.random().toString(36).substr(2, 9), 
-      label: 'Nueva Opción', 
-      content: '', 
-      children: [] 
-    }];
-    handleChange('children', newChildren);
-    setIsOpen(true);
-  };
-
-  return (
-    <div className="tree-node-wrap" style={{ marginLeft: level > 0 ? 20 : 0 }}>
-      <div className="tree-node">
-        <div className="node-main">
-          <button className="node-toggle" onClick={() => setIsOpen(!isOpen)}>
-            {option.children?.length > 0 ? (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <div style={{width:16}}/>}
-          </button>
-          
-          <div className="node-inputs">
-            <div className="node-row">
-              <input 
-                className="node-label-input"
-                value={option.label}
-                placeholder="Nombre de la opción (Ejem: '1. Catálogo')"
-                onChange={(e) => handleChange('label', e.target.value)}
-              />
-              <div className="node-actions">
-                <button className="btn-icon add" title="Añadir Submenú" onClick={addChild}><Plus size={16}/></button>
-                <button className="btn-icon delete" title="Eliminar" onClick={onDelete}><Trash2 size={16}/></button>
-              </div>
-            </div>
-
-            {isOpen && (
-              <div className="node-details">
-                <label>Respuesta del Bot:</label>
-                <textarea 
-                  placeholder="Escribe lo que el bot dirá al elegir esta opción..."
-                  value={option.content}
-                  onChange={(e) => handleChange('content', e.target.value)}
-                />
-                
-                <div className="node-media">
-                  {option.mediaUrl ? (
-                    <div className="media-preview-wrap">
-                      <div className="media-pill">
-                        {option.mediaType === 'pdf' ? <FileText size={14}/> : <ImageIcon size={14}/>}
-                        <span className="truncate">{option.mediaUrl}</span>
-                        <button onClick={() => handleChange('mediaUrl', null)}>×</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <label className="upload-label">
-                      {isUploading ? <RefreshCw size={14} className="spin"/> : <Upload size={14}/>}
-                      <span>{isUploading ? 'Subiendo...' : 'Adjuntar PDF/Imagen'}</span>
-                      <input type="file" hidden onChange={handleFileUpload} />
-                    </label>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isOpen && option.children?.length > 0 && (
-        <div className="node-children">
-          {option.children.map((child, idx) => (
-            <TreeOption 
-              key={child.id || idx}
-              option={child}
-              level={level + 1}
-              onUpdate={(updated) => {
-                const newChildren = [...option.children];
-                newChildren[idx] = updated;
-                handleChange('children', newChildren);
-              }}
-              onDelete={() => {
-                handleChange('children', option.children.filter((_, i) => i !== idx));
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+import ChatbotEditor from './ChatbotEditor';
 import socket from '../services/socket';
 
 // Registramos los módulos de Chart.js que vamos a usar
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
+ChartJS.register(
+  ArcElement, 
+  Tooltip, 
+  Legend, 
+  CategoryScale, 
+  LinearScale, 
+  BarElement,
+  LineElement,
+  PointElement
+);
 
 // Formateamos las fechas para mostrarlas de forma legible
 const formatDate = (isoString) => {
@@ -304,81 +202,22 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
   const [connected, setConnected] = useState(socket.connected);
   const [activeNav, setActiveNav] = useState('dashboard');
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [waQR, setWaQR] = useState(null); // Imagen del QR en Base64
-  const [waStatus, setWaStatus] = useState({ connected: false }); // Estado de WhatsApp
+  const [waDevices, setWaDevices] = useState({}); // { [id]: { connected, qr, message } }
   const userId = localStorage.getItem('userId');
 
-  // Configuración del Bot
-  const [botConfig, setBotConfig] = useState({
-    greeting: '',
-    keywords: [],
-    defaultResponse: '',
-    tree: []
-  });
-  const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [configLoading, setConfigLoading] = useState(true);
+  const [nodes, setNodes] = useState([]);
 
-  // Cargamos los mensajes iniciales desde la API al montar el componente
+  // Cargamos los mensajes iniciales y los nodos desde la API al montar el componente
   useEffect(() => {
-    Promise.all([
-      fetchMessages().then(setMessages),
-      fetchBotConfig().then(cfg => {
-        setBotConfig({
-          ...cfg,
-          tree: cfg.tree || []
-        });
+    setLoading(true);
+    Promise.all([fetchMessages(), getNodes()])
+      .then(([msgs, nodesData]) => {
+        setMessages(msgs);
+        setNodes(nodesData);
       })
-    ])
-    .catch(console.error)
-    .finally(() => {
-      setLoading(false);
-      setConfigLoading(false);
-    });
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
-
-  // Handlers para la configuración del menú
-  const handleConfigChange = (field, value) => {
-    setBotConfig(prev => ({ ...prev, [field]: value }));
-  };
-
-  const addRootOption = () => {
-    setBotConfig(prev => ({
-      ...prev,
-      tree: [...(prev.tree || []), { 
-        id: Math.random().toString(36).substr(2, 9), 
-        label: 'Nueva Opción', 
-        content: '', 
-        children: [] 
-      }]
-    }));
-  };
-
-  const addKeyword = () => {
-    setBotConfig(prev => ({
-      ...prev,
-      keywords: [...prev.keywords, { key: '', response: '' }]
-    }));
-  };
-
-  const removeKeyword = (index) => {
-    setBotConfig(prev => ({
-      ...prev,
-      keywords: prev.keywords.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleSaveConfig = async () => {
-    setIsSavingConfig(true);
-    try {
-      await saveBotConfig(botConfig);
-      alert('¡Configuración guardada correctamente!');
-    } catch (err) {
-      console.error(err);
-      alert('Error al guardar la configuración');
-    } finally {
-      setIsSavingConfig(false);
-    }
-  };
 
   // Nos subscribimos a los eventos de Socket.IO para recibir mensajes en vivo
   useEffect(() => {
@@ -393,33 +232,59 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
       setLastUpdate(new Date().toLocaleTimeString('es-MX'));
     };
 
-    // Escuchamos el estado de WhatsApp y el QR
-    const onWA_QR = (qrImage) => setWaQR(qrImage);
-    const onWA_Status = (status) => {
-      setWaStatus(status);
-      if (status.connected) setWaQR(null); // Si se conecta, quitamos el QR
+    // Escuchamos actualizaciones de estados de WhatsApp y QRs por instancia
+    const onWA_QR = ({ instanceId, qr }) => {
+      setWaDevices(prev => ({
+        ...prev,
+        [instanceId]: { ...(prev[instanceId] || {}), qr, connected: false }
+      }));
+    };
+
+    const onWA_Status = (update) => {
+      const { instanceId, connected, message, removed } = update;
+      setWaDevices(prev => {
+        if (removed) {
+          const next = { ...prev };
+          delete next[instanceId];
+          return next;
+        }
+        return {
+          ...prev,
+          [instanceId]: { 
+            ...(prev[instanceId] || {}), 
+            connected, 
+            message: message || '',
+            qr: connected ? null : (prev[instanceId]?.qr || null)
+          }
+        };
+      });
     };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('new_message', onNew);
     socket.on('whatsapp_qr', onWA_QR);
-    socket.on('whatsapp_status', onWA_Status);
+    socket.on('whatsapp_status_update', onWA_Status);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('new_message', onNew);
       socket.off('whatsapp_qr', onWA_QR);
-      socket.off('whatsapp_status', onWA_Status);
+      socket.off('whatsapp_status_update', onWA_Status);
     };
   }, [userId]);
 
-  // Función para desconectar WhatsApp
-  const handleWADisconnect = () => {
-    if (window.confirm('¿Estás seguro de que quieres desconectar WhatsApp? Tendrás que escanear el QR de nuevo.')) {
-      socket.emit('whatsapp_logout', userId);
+  // Función para desconectar un dispositivo específico
+  const handleWADisconnect = (instanceId, isPending = false) => {
+    if (isPending || window.confirm('¿Estás seguro de que quieres desvincular este WhatsApp? Se cerrará la sesión en el teléfono.')) {
+      socket.emit('whatsapp_logout', { userId, instanceId });
     }
+  };
+
+  // Función para agregar un nuevo dispositivo
+  const handleAddDevice = () => {
+    socket.emit('whatsapp_add_instance', userId);
   };
 
   // Compute Unique Users for the "Usuarios" view
@@ -455,114 +320,163 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
       return d >= startOfYesterday && d < startOfToday;
     });
 
-    const getCounts = (list) => list.reduce((acc, m) => {
-      acc[m.type] = (acc[m.type] || 0) + 1;
-      return acc;
-    }, { menu: 0, pedido: 0, otro: 0 });
-
-    const tC = getCounts(todayMsgs);
-    const yC = getCounts(yesterdayMsgs);
-
     const diff = (t, y) => {
       if (y === 0) return t > 0 ? 100 : 0;
       return Math.round(((t - y) / y) * 100);
     };
 
+    // Cálculo de éxito (resueltos hoy vs ayer)
+    const resolvedToday = todayMsgs.filter(m => m.isResolved).length;
+    const resolvedYesterday = yesterdayMsgs.filter(m => m.isResolved).length;
+
+    // Cálculo de fallbacks
+    const fallbackToday = todayMsgs.filter(m => m.isFallback).length;
+    const fallbackYesterday = yesterdayMsgs.filter(m => m.isFallback).length;
+
     return {
       total: diff(todayMsgs.length, yesterdayMsgs.length),
-      pedido: diff(tC.pedido, yC.pedido),
-      menu: diff(tC.menu, yC.menu),
-      users: diff(new Set(todayMsgs.map(m => m.chatId)).size, new Set(yesterdayMsgs.map(m => m.chatId)).size)
+      success: diff(resolvedToday, resolvedYesterday),
+      fallback: diff(fallbackToday, fallbackYesterday),
+      users: diff(new Set(todayMsgs.map(m => m.chatId)).size, new Set(yesterdayMsgs.map(m => m.chatId)).size),
+      counts: {
+        resolved: resolvedToday,
+        fallback: fallbackToday,
+        total: todayMsgs.length,
+        users: new Set(todayMsgs.map(m => m.chatId)).size
+      }
     };
   }, [messages]);
 
-  // Contamos los mensajes por tipo para las estadísticas y gráfica
-  const counts = messages.reduce(
-    (acc, m) => { acc[m.type] = (acc[m.type] || 0) + 1; return acc; },
-    { menu: 0, pedido: 0, otro: 0 }
-  );
-
-  // Datos para la gráfica de barras
-  const barData = {
-    labels: ['Menú', 'Pedidos', 'Otros'],
-    datasets: [
-      {
+  // Gráfica de Actividad por Horas (Heatmap)
+  const hourlyData = useMemo(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const countsPerHB = Array(24).fill(0);
+    messages.forEach(m => {
+      const h = new Date(m.date).getHours();
+      countsPerHB[h]++;
+    });
+    return {
+      labels: hours.map(h => `${h}:00`),
+      datasets: [{
         label: 'Mensajes',
-        data: [counts.menu, counts.pedido, counts.otro],
-        backgroundColor: ['rgba(99,102,241,0.8)', 'rgba(34,197,94,0.8)', 'rgba(245,158,11,0.8)'],
-        borderRadius: 6,
-        borderSkipped: false,
-      },
-    ],
-  };
+        data: countsPerHB,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.1)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    };
+  }, [messages]);
 
-  const barOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { callbacks: { label: (c) => ` ${c.parsed.y} mensajes` } },
-    },
-    scales: {
-      x: {
-        grid: { display: false },
-        ticks: { color: 'var(--text-muted)' },
-      },
-      y: {
-        grid: { color: 'var(--border)' },
-        ticks: { color: 'var(--text-muted)', stepSize: 1 },
-        beginAtZero: true,
-      },
-    },
-  };
+  // Nodos más visitados (Top 5)
+  const topNodesData = useMemo(() => {
+    const nodeCounts = {};
+    messages.forEach(m => {
+      if (m.nodeId) nodeCounts[m.nodeId] = (nodeCounts[m.nodeId] || 0) + 1;
+    });
+    const sorted = Object.entries(nodeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    
+    return {
+      labels: sorted.map(([id]) => {
+        const n = nodes.find(node => node.id === id);
+        return n ? (n.message?.replace(/<[^>]*>/g, '').slice(0, 20) || 'Sin nombre') : 'Nodo base';
+      }),
+      datasets: [{
+        axis: 'y',
+        label: 'Visitas',
+        data: sorted.map(s => s[1]),
+        backgroundColor: 'rgba(34,197,94,0.7)',
+        borderRadius: 4,
+      }]
+    };
+  }, [messages, nodes]);
 
-  // Datos para la gráfica donut pequeña
-  const donutData = {
-    labels: ['Menú', 'Pedidos', 'Otros'],
-    datasets: [{
-      data: [counts.menu, counts.pedido, counts.otro],
-      backgroundColor: ['#6366f1', '#22c55e', '#f59e0b'],
-      borderWidth: 0,
-    }],
-  };
+  // Efectividad del Bot (Donut)
+  const botEffectivenessData = useMemo(() => {
+    const resolved = messages.filter(m => m.isResolved).length;
+    const fallback = messages.filter(m => m.isFallback).length;
+    const others = messages.length - resolved - fallback;
 
-  const donutOptions = {
-    responsive: true,
-    plugins: { legend: { display: false }, tooltip: { enabled: true } },
-    cutout: '72%',
-  };
+    return {
+      labels: ['Resueltos', 'Fallback', 'En Proceso'],
+      datasets: [{
+        data: [resolved, fallback, others],
+        backgroundColor: ['#22c55e', '#ef4444', '#f59e0b'],
+        borderWidth: 0,
+        cutout: '75%',
+      }]
+    };
+  }, [messages]);
+
+  // Retención de Usuarios (Nuevos vs Recurrentes)
+  const retentionStats = useMemo(() => {
+    const userHistory = {}; // chatId -> firstDate
+    messages.forEach(m => {
+      const d = new Date(m.date);
+      if (!userHistory[m.chatId] || d < new Date(userHistory[m.chatId])) {
+        userHistory[m.chatId] = m.date;
+      }
+    });
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    let newUsers = 0;
+    let returning = 0;
+
+    const usersActiveToday = new Set(messages.filter(m => new Date(m.date) >= today).map(m => m.chatId));
+    usersActiveToday.forEach(uid => {
+      if (new Date(userHistory[uid]) >= today) newUsers++;
+      else returning++;
+    });
+
+    return { newUsers, returning };
+  }, [messages]);
+
 
   // Navegación del sidebar
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'messages',  icon: MessageSquare,  label: 'Mensajes' },
     { id: 'pedidos',   icon: ShoppingCart,   label: 'Pedidos' },
-    { id: 'botconfig', icon: Bot,            label: '🤖 Bot Config' },
-    { id: 'personalized', icon: Settings,    label: 'Personalizado' },
+    { id: 'botconfig', icon: Bot,            label: 'Bot Config' },
     { id: 'usuarios',  icon: Users,          label: 'Usuarios' },
   ];
 
   return (
     <div className="layout">
-      {/* ── VENTANA DE VINCULACIÓN WHATSAPP ─────────────────────────── */}
-      {waQR && !waStatus.connected && (
-        <div className="qr-overlay">
-          <div className="qr-card">
-            <div className="qr-header">
-              <MessageCircle size={28} color="#25D366" />
-              <h2>Vincula tu WhatsApp</h2>
-            </div>
-            <p>Abre WhatsApp en tu teléfono, ve a Dispositivos vinculados y escanea este código QR:</p>
-            <div className="qr-image-wrap">
-              <img src={waQR} alt="WhatsApp QR" className="qr-image" />
-            </div>
-            <div className="qr-footer">
-              <RefreshCw size={14} className="spin-slow" />
-              <span>Esperando vinculación...</span>
+      {/* ── VENTANAS DE VINCULACIÓN (QRs activos) ────────────────── */}
+      {Object.entries(waDevices).map(([id, dev]) => (
+        dev.qr && !dev.connected && (
+          <div key={id} className="qr-overlay">
+            <div className="qr-card">
+              <div className="qr-header">
+                <MessageCircle size={28} color="#25D366" />
+                <h2>Vincula tu WhatsApp</h2>
+              </div>
+              <p>Escanea este código QR con el dispositivo que quieras agregar:</p>
+              <div className="qr-image-wrap">
+                <img src={dev.qr} alt="WhatsApp QR" className="qr-image" />
+              </div>
+              <div className="qr-footer">
+                <RefreshCw size={14} className="spin-slow" />
+                <span>ID: {id.split('_').pop()} — Esperando vinculación...</span>
+                <button 
+                  className="btn btn-ghost btn-sm" 
+                  style={{ marginTop: 10, width: '100%' }}
+                  onClick={() => handleWADisconnect(id, true)}
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      ))}
 
       {/* ── SIDEBAR ─────────────────────────────────────────────────── */}
       <aside className="sidebar">
@@ -609,21 +523,22 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
       {/* ── CONTENIDO PRINCIPAL ─────────────────────────────────────── */}
       <main className="main">
 
-        {/* Header */}
+        {/* Header Superior */}
         <header className="top-header">
           <div className="header-left">
             <h1 className="page-title">
-              {navItems.find(n => n.id === activeNav)?.label || 'Analytics'}
+              {navItems.find(n => n.id === activeNav)?.label || 'Dashboard'}
             </h1>
             <span className="page-subtitle">
-              {new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+              {new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
             </span>
           </div>
+
           <div className="header-right">
-            {/* Indicador de conexión WebSocket */}
+            {/* Indicador de conexión en vivo */}
             <div className={`connection-badge ${connected ? 'on' : 'off'}`}>
               {connected ? <Wifi size={14} /> : <WifiOff size={14} />}
-              <span>{connected ? 'En vivo' : 'Desconectado'}</span>
+              <span>{connected ? 'En vivo' : 'Sin conexión'}</span>
             </div>
 
             {/* Última actualización */}
@@ -640,252 +555,218 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
             </button>
 
             {/* Avatar de usuario */}
-            <div className="user-avatar">BD</div>
+            <div className="user-avatar" title="Sesión de Usuario">BD</div>
           </div>
         </header>
 
-        {/* ── RENDER CONDICIONAL DE VISTAS ─────────────────────────────── */}
+        {/* ── RENDERIZADO DE VISTAS ─────────────────────────────────── */}
         
-        {/* VISTA 1: DASHBOARD PRINCIPAL */}
+        {/* 1. VISTA DASHBOARD (Análisis Avanzado) */}
         {activeNav === 'dashboard' && (
-          <>
-            <section className="stats-row">
-              <StatCard icon={MessageSquare} label="Total Mensajes" value={messages.length} color="#6366f1" trend={trends.total} />
-              <StatCard icon={ShoppingCart} label="Pedidos"        value={counts.pedido}   color="#22c55e" trend={trends.pedido} />
-              <StatCard icon={Menu}          label="Consultas Menú" value={counts.menu}     color="#f59e0b" trend={trends.menu} />
-              <StatCard icon={Users}         label="Chats Únicos"  value={uniqueUsers.length} color="#ec4899" trend={trends.users} />
-            </section>
-
-            <section className="charts-row">
-              <div className="card chart-card">
-                <div className="card-header">
-                  <div>
-                    <h3 className="card-title">Distribución de mensajes</h3>
-                    <p className="card-subtitle">Por tipo de consulta</p>
+          <div className="dashboard-content">
+            {/* Métricas Principales */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-icon" style={{ backgroundColor: 'rgba(99,102,241,0.1)', color: '#6366f1' }}>
+                    <MessageSquare size={20} />
+                  </div>
+                  <div className={`stat-trend ${trends.total >= 0 ? 'up' : 'down'}`}>
+                    {trends.total >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    {Math.abs(trends.total)}%
                   </div>
                 </div>
-                <div className="bar-chart-wrap">
-                  {messages.length === 0 ? (
-                    <div className="empty-chart">
-                      <MessageSquare size={32} color="var(--text-muted)" />
-                      <p>Sin datos todavía</p>
-                    </div>
-                  ) : (
-                    <Bar data={barData} options={barOptions} />
-                  )}
+                <div className="stat-value">{trends.counts.total}</div>
+                <div className="stat-label">Mensajes Hoy</div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-icon" style={{ backgroundColor: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>
+                    <Users size={20} />
+                  </div>
+                  <div className={`stat-trend ${trends.users >= 0 ? 'up' : 'down'}`}>
+                    {trends.users >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    {Math.abs(trends.users)}%
+                  </div>
+                </div>
+                <div className="stat-value">{trends.counts.users}</div>
+                <div className="stat-label">Clientes Activos</div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-icon" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+                    <Award size={20} />
+                  </div>
+                  <div className={`stat-trend ${trends.success >= 0 ? 'up' : 'down'}`}>
+                    {trends.success >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    {Math.abs(trends.success)}%
+                  </div>
+                </div>
+                <div className="stat-value">{trends.counts.resolved}</div>
+                <div className="stat-label">Resoluciones Automáticas</div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-header">
+                  <div className="stat-icon" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div className={`stat-trend ${trends.fallback <= 0 ? 'up' : 'down'}`}>
+                    {trends.fallback <= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    {Math.abs(trends.fallback)}%
+                  </div>
+                </div>
+                <div className="stat-value">{trends.counts.fallback}</div>
+                <div className="stat-label">Consultas Fallidas (Bot)</div>
+              </div>
+            </div>
+
+            {/* Gráficas de Rendimiento */}
+            <div className="charts-grid">
+              {/* Pulso de Actividad */}
+              <div className="card chart-card main-chart">
+                <div className="card-header">
+                  <div>
+                    <h3 className="card-title">Pulso de Actividad</h3>
+                    <p className="card-subtitle">Volumen de mensajes por hora del día</p>
+                  </div>
+                  <div className="stat-icon-small"><Clock size={16} /></div>
+                </div>
+                <div className="chart-container" style={{ height: 300 }}>
+                  <Line data={hourlyData} options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                      x: { grid: { display: false } }
+                    }
+                  }} />
                 </div>
               </div>
 
-              <div className="card donut-card">
+              {/* Efectividad Visual */}
+              <div className="card chart-card side-chart">
                 <div className="card-header">
                   <div>
-                    <h3 className="card-title">Resumen</h3>
-                    <p className="card-subtitle">Total: {messages.length}</p>
+                    <h3 className="card-title">Efectividad del Bot</h3>
+                    <p className="card-subtitle">Flujos completados vs Fallos</p>
+                  </div>
+                  <div className="stat-icon-small"><Zap size={16} /></div>
+                </div>
+                <div className="chart-container-donut">
+                  <Doughnut data={botEffectivenessData} options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        labels: { color: 'var(--text-muted)', usePointStyle: true, padding: 20 }
+                      }
+                    }
+                  }} />
+                  <div className="donut-center">
+                    <div className="donut-value">
+                      {Math.round((trends.counts.resolved / (trends.counts.total || 1)) * 100)}%
+                    </div>
+                    <div className="donut-label">Éxito</div>
                   </div>
                 </div>
-                {messages.length === 0 ? (
-                  <div className="empty-chart">
-                    <MessageSquare size={32} color="var(--text-muted)" />
-                    <p>Sin datos todavía</p>
-                  </div>
-                ) : (
-                  <div className="donut-wrap">
-                    <div className="donut-chart-container">
-                      <Doughnut data={donutData} options={donutOptions} />
-                      <div className="donut-center-label">
-                        <span className="donut-total">{messages.length}</span>
-                        <span className="donut-sub">total</span>
-                      </div>
-                    </div>
-                    <ul className="donut-legend">
-                      {[
-                        { key: 'menu',   label: 'Menú',    color: '#6366f1' },
-                        { key: 'pedido', label: 'Pedidos', color: '#22c55e' },
-                        { key: 'otro',   label: 'Otros',   color: '#f59e0b' },
-                      ].map(({ key, label, color }) => (
-                        <li key={key} className="legend-row">
-                          <span className="legend-dot" style={{ background: color }} />
-                          <span className="legend-name">{label}</span>
-                          <span className="legend-val">{counts[key]}</span>
-                          <span className="legend-pct">
-                            {messages.length ? Math.round((counts[key] / messages.length) * 100) : 0}%
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
-            </section>
+            </div>
 
+            {/* Fila Inferior de Análisis */}
+            <div className="secondary-grid">
+              {/* Nodos Populares */}
+              <div className="card chart-card flex-1">
+                <div className="card-header">
+                  <div>
+                    <h3 className="card-title">Interacciones Estrella</h3>
+                    <p className="card-subtitle">Nodos del chatbot con mayor tráfico</p>
+                  </div>
+                  <div className="stat-icon-small"><Activity size={16} /></div>
+                </div>
+                <div className="chart-container" style={{ height: 200 }}>
+                  <Bar data={topNodesData} options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                      x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                      y: { grid: { display: false } }
+                    }
+                  }} />
+                </div>
+              </div>
+
+              {/* Retención y Fidelidad */}
+              <div className="card chart-card flex-1">
+                <div className="card-header">
+                  <div>
+                    <h3 className="card-title">Retención de Usuarios</h3>
+                    <p className="card-subtitle">Nuevos contactos vs Recurrentes</p>
+                  </div>
+                  <div className="stat-icon-small"><UserCheck size={16} /></div>
+                </div>
+                <div className="retention-container">
+                  <div className="retention-item">
+                    <div className="retention-label">Contactos Nuevos</div>
+                    <div className="retention-bar-bg">
+                      <div className="retention-bar-fill" style={{ width: `${(retentionStats.newUsers / (trends.counts.users || 1)) * 100}%`, backgroundColor: '#3b82f6' }}></div>
+                    </div>
+                    <div className="retention-val">{retentionStats.newUsers}</div>
+                  </div>
+                  <div className="retention-item">
+                    <div className="retention-label">Contactos Recurrentes</div>
+                    <div className="retention-bar-bg">
+                      <div className="retention-bar-fill" style={{ width: `${(retentionStats.returning / (trends.counts.users || 1)) * 100}%`, backgroundColor: '#a855f7' }}></div>
+                    </div>
+                    <div className="retention-val">{retentionStats.returning}</div>
+                  </div>
+                  <p className="retention-hint">
+                    <Activity size={12} /> {Math.round((retentionStats.returning / (trends.counts.users || 1)) * 100)}% de los clientes de hoy ya interactuaron anteriormente.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabla de Mensajes Recientes (dentro del dashboard) */}
             <MessagesTable 
-              messages={messages} 
+              messages={messages.slice(0, 10)} 
               loading={loading} 
-              title="Mensajes recientes" 
-              subtitle="Actualizándose en tiempo real" 
+              title="Actividad Reciente" 
+              subtitle="Últimas interacciones captadas por el bot" 
               isDashboard={true} 
             />
-          </>
+          </div>
         )}
 
-        {/* VISTA 2: TODOS LOS MENSAJES */}
+        {/* 2. VISTA MENSAJES HISTÓRICOS */}
         {activeNav === 'messages' && (
           <MessagesTable 
             messages={messages} 
             loading={loading} 
-            title="Todos los mensajes" 
-            subtitle="Historial completo de la base de datos" 
+            title="Historial de Mensajes" 
+            subtitle="Todos los registros almacenados en la base de datos" 
             isDashboard={false} 
           />
         )}
 
-        {/* VISTA 3: PEDIDOS */}
-        {activeNav === 'pedidos' && (
-          <MessagesTable 
-            messages={messages.filter(m => m.type === 'pedido')} 
-            loading={loading} 
-            title="Historial de Pedidos" 
-            subtitle="Mensajes filtrados por el tipo 'Pedido'" 
-            isDashboard={false} 
-          />
-        )}
-
-        {/* VISTA 4: BOT CONFIG — Editor de Árbol Dinámico */}
+        {/* 3. VISTA CHATBOT EDITOR */}
         {activeNav === 'botconfig' && (
           <ChatbotEditor />
         )}
 
-        {/* VISTA 5: CONFIGURACIÓN PERSONALIZADA (BOT LEGACY) */}
-        {activeNav === 'personalized' && (
-          <div className="config-view">
-            {configLoading ? (
-              <div className="table-loading">
-                <div className="spinner" />
-                <span>Cargando parámetros...</span>
-              </div>
-            ) : (
-              <>
-                <header className="config-header">
-                  <div>
-                    <h2>Configuración Personalizada</h2>
-                    <p>Crea el flujo y las respuestas automáticas para tu bot.</p>
-                  </div>
-                  <button className="btn btn-primary" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                    {isSavingConfig ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
-                    <span>Guardar Cambios</span>
-                  </button>
-                </header>
-
-                <div className="config-grid shadow-grid">
-                  <div className="card config-card">
-                    <div className="card-header"><h3 className="card-title">Saludo Inicial</h3></div>
-                    <div className="card-body">
-                      <textarea 
-                        className="config-textarea" 
-                        value={botConfig.greeting} 
-                        onChange={(e) => handleConfigChange('greeting', e.target.value)}
-                        placeholder="Mensaje de bienvenida..."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="card config-card">
-                    <div className="card-header"><h3 className="card-title">Fallback</h3></div>
-                    <div className="card-body">
-                      <textarea 
-                        className="config-textarea"
-                        value={botConfig.defaultResponse}
-                        onChange={(e) => handleConfigChange('defaultResponse', e.target.value)}
-                        placeholder="Si no entiendo..."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="card config-card full-width">
-                    <div className="card-header flex-between">
-                      <h3 className="card-title">Flujo Decisional (Árbol)</h3>
-                      <button className="btn btn-secondary btn-sm" onClick={addRootOption}>
-                        <Plus size={14} /> <span>Añadir Opción Base</span>
-                      </button>
-                    </div>
-                    <div className="card-body">
-                      <div className="tree-container">
-                        {botConfig.tree.map((node, idx) => (
-                          <TreeOption 
-                            key={node.id} 
-                            option={node} 
-                            onUpdate={(updated) => {
-                              const newTree = [...botConfig.tree];
-                              newTree[idx] = updated;
-                              handleConfigChange('tree', newTree);
-                            }}
-                            onDelete={() => {
-                              handleConfigChange('tree', botConfig.tree.filter((_, i) => i !== idx));
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="card config-card full-width">
-                    <div className="card-header flex-between">
-                      <h3 className="card-title">Palabras Clave Especiales</h3>
-                      <button className="btn btn-secondary btn-sm" onClick={addKeyword}>
-                        <Plus size={14} /> <span>Añadir Palabra</span>
-                      </button>
-                    </div>
-                    <div className="card-body">
-                      {botConfig.keywords.length === 0 ? (
-                        <p className="empty-text">No hay palabras clave configuradas.</p>
-                      ) : (
-                        <div className="keyword-list">
-                          {botConfig.keywords.map((kw, idx) => (
-                            <div key={idx} className="keyword-row" style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                              <input 
-                                className="config-input" 
-                                value={kw.key} 
-                                placeholder="Si el cliente escribe..." 
-                                onChange={(e) => {
-                                  const news = [...botConfig.keywords]; 
-                                  news[idx].key = e.target.value;
-                                  handleConfigChange('keywords', news);
-                                }} 
-                                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                              />
-                              <input 
-                                className="config-input"
-                                value={kw.response} 
-                                placeholder="El bot responde..." 
-                                onChange={(e) => {
-                                  const news = [...botConfig.keywords]; 
-                                  news[idx].response = e.target.value;
-                                  handleConfigChange('keywords', news);
-                                }} 
-                                style={{ flex: 2, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                              />
-                              <button className="btn-icon delete" onClick={() => removeKeyword(idx)}>
-                                <Trash2 size={16}/>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* VISTA 5: USUARIOS ÚNICOS */}
+        {/* 4. VISTA USUARIOS / AUDIENCIA */}
         {activeNav === 'usuarios' && (
           <div className="card table-card" style={{ marginTop: 24, marginBottom: 24 }}>
             <div className="card-header">
               <div>
-                <h3 className="card-title">Usuarios únicos</h3>
-                <p className="card-subtitle">Personas que han interactuado con el bot</p>
+                <h3 className="card-title">Directorio de Usuarios</h3>
+                <p className="card-subtitle">Contactos que han interactuado con el sistema</p>
               </div>
               <span className="badge-count">{uniqueUsers.length}</span>
             </div>
@@ -893,22 +774,22 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
             {loading ? (
               <div className="table-loading">
                 <div className="spinner" />
-                <span>Cargando usuarios...</span>
+                <span>Analizando audiencia...</span>
               </div>
             ) : uniqueUsers.length === 0 ? (
               <div className="table-empty">
                 <Users size={36} color="var(--text-muted)" />
-                <p>No hay usuarios registrados</p>
+                <p>No hay usuarios registrados en el sistema</p>
               </div>
             ) : (
               <div className="table-scroll">
                 <table className="msg-table">
                   <thead>
                     <tr>
-                      <th>Usuario (Chat ID)</th>
-                      <th>Total Mensajes</th>
+                      <th>Usuario</th>
+                      <th>Mensajes</th>
                       <th>Primer contacto</th>
-                      <th>Último mensaje</th>
+                      <th>Última interacción</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -922,7 +803,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                         </td>
                         <td>
                           <span className="type-badge" style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}>
-                            {u.count} msjs
+                            {u.count} interacciones
                           </span>
                         </td>
                         <td className="date-cell">{formatDate(u.firstDate)}</td>
@@ -936,40 +817,57 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
           </div>
         )}
 
-        {/* VISTA 6: CONFIGURACIÓN */}
+        {/* 5. VISTA CONFIGURACIÓN DE DISPOSITIVOS */}
         {activeNav === 'settings' && (
           <div className="settings-container">
             <div className="card settings-card">
               <div className="card-header">
                 <div>
-                  <h3 className="card-title">Configuración de Conexiones</h3>
-                  <p className="card-subtitle">Gestiona tus bots y servicios conectados</p>
+                  <h3 className="card-title">Instancias de WhatsApp</h3>
+                  <p className="card-subtitle">Crea y gestiona múltiples conexiones simultáneas</p>
                 </div>
+                <button className="btn btn-primary btn-sm" onClick={handleAddDevice}>
+                  <Plus size={16} /> Vincular nuevo número
+                </button>
               </div>
               
-              <div className="settings-section">
-                <div className="service-info">
-                  <div className="service-icon wa"><MessageCircle size={24} /></div>
-                  <div className="service-details">
-                    <h4>WhatsApp</h4>
-                    <p>{waStatus.connected ? 'Conectado y activo' : 'Desconectado'}</p>
-                  </div>
-                  <div className={`status-pill ${waStatus.connected ? 'on' : 'off'}`}>
-                    {waStatus.connected ? 'Online' : 'Offline'}
-                  </div>
-                </div>
-                
-                <div className="service-actions">
-                  {waStatus.connected ? (
-                    <button className="btn btn-danger" onClick={handleWADisconnect}>
-                      Desconectar WhatsApp
+              <div className="devices-grid">
+                {Object.keys(waDevices).length === 0 ? (
+                  <div className="table-empty" style={{ padding: '40px 0' }}>
+                    <MessageCircle size={40} color="var(--text-muted)" />
+                    <p>No hay dispositivos vinculados actualmente</p>
+                    <button className="btn btn-outline btn-sm" onClick={handleAddDevice} style={{ marginTop: 12 }}>
+                      Configurar primera instancia
                     </button>
-                  ) : (
-                    <button className="btn btn-primary" onClick={() => socket.emit('whatsapp_reset', userId)}>
-                      Reintentar Conexión
-                    </button>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  Object.entries(waDevices)
+                    .filter(([, dev]) => dev.connected || dev.qr)
+                    .map(([id, dev]) => (
+                    <div key={id} className={`device-item ${dev.connected ? 'active' : ''}`}>
+                      <div className="device-info">
+                        <div className={`device-icon ${dev.connected ? 'online' : 'offline'}`}>
+                          <MessageCircle size={20} />
+                        </div>
+                        <div className="device-details">
+                          <h4>WhatsApp #{id.split('_').pop().slice(-4)}</h4>
+                          <p>{dev.connected ? 'Conectado y Operativo' : (dev.message || 'Esperando vinculación')}</p>
+                        </div>
+                      </div>
+                      <div className="device-actions">
+                        {dev.connected ? (
+                          <button className="btn btn-danger btn-sm" onClick={() => handleWADisconnect(id)}>
+                            Cerrar sesión
+                          </button>
+                        ) : (
+                          <button className="btn btn-outline btn-sm" onClick={() => socket.emit('whatsapp_reset', { userId, instanceId: id })}>
+                            Generar nuevo QR
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
