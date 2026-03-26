@@ -193,6 +193,11 @@ const getChatbotGeneralConfig = async (ownerId) => {
       ownerId,
       greeting: '¡Hola! 👋 ¿En qué podemos ayudarte hoy?',
       fallbackMessage: 'No entiendo tu consulta. Escribe *0* para volver al inicio.',
+      timeoutMinutes: 5,
+      timeoutExtensionMinutes: 5,
+      timeoutWarningMsg: '⏳ Tu sesión está por cerrarse por inactividad. Si necesitas más tiempo, responde con *1*.',
+      timeoutExtensionMsg: '✅ Entendido, tienes más tiempo.',
+      timeoutCloseMsg: '❌ Chat cerrado por inactividad. Escribe cualquier mensaje para volver a iniciar.',
       keywords: []
     };
   }

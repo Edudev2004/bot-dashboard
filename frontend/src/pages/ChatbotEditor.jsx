@@ -329,7 +329,16 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
 
 // ─── Panel de Config General ──────────────────────────────────────────────────
 function GeneralConfigPanel({ onClose }) {
-  const [config, setConfig]   = useState({ greeting: '', fallbackMessage: '', keywords: [] });
+  const [config, setConfig]   = useState({ 
+    greeting: '', 
+    fallbackMessage: '', 
+    timeoutMinutes: 5,
+    timeoutExtensionMinutes: 5,
+    timeoutWarningMsg: '',
+    timeoutExtensionMsg: '',
+    timeoutCloseMsg: '',
+    keywords: [] 
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [toast, setToast]     = useState('');
@@ -390,6 +399,59 @@ function GeneralConfigPanel({ onClose }) {
       <div className="form-row">
         <label>Mensaje de fallback (cuando no entiende al usuario)</label>
         <textarea rows={2} value={config.fallbackMessage || ''} onChange={e => setConfig(c => ({ ...c, fallbackMessage: e.target.value }))} placeholder="No entiendo tu consulta. Escribe *0* para volver al menú." />
+      </div>
+
+      <div className="form-section">
+        <div className="form-section-title">Tiempo de Espera e Inactividad</div>
+        <div className="form-row">
+          <label>Cerrar chat por inactividad después de:</label>
+          <select 
+            value={config.timeoutMinutes || 5} 
+            onChange={e => setConfig(c => ({ ...c, timeoutMinutes: parseInt(e.target.value) }))}
+          >
+            <option value={5}>5 minutos</option>
+            <option value={10}>10 minutos</option>
+            <option value={15}>15 minutos</option>
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Tiempo adicional al extender (cuando responde *1*):</label>
+          <select 
+            value={config.timeoutExtensionMinutes || 5} 
+            onChange={e => setConfig(c => ({ ...c, timeoutExtensionMinutes: parseInt(e.target.value) }))}
+          >
+            <option value={5}>5 minutos</option>
+            <option value={10}>10 minutos</option>
+            <option value={15}>15 minutos</option>
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Mensaje de Aviso (Falta 1 minuto para cerrar el chat)</label>
+          <textarea 
+            rows={2} 
+            value={config.timeoutWarningMsg || ''} 
+            onChange={e => setConfig(c => ({ ...c, timeoutWarningMsg: e.target.value }))} 
+            placeholder="⏳ Tu sesión está por cerrarse por inactividad. Si necesitas más tiempo, responde con *1*." 
+          />
+        </div>
+        <div className="form-row">
+          <label>Mensaje de Extensión (Cuando el usuario responde *1*)</label>
+          <input 
+            type="text" 
+            value={config.timeoutExtensionMsg || ''} 
+            onChange={e => setConfig(c => ({ ...c, timeoutExtensionMsg: e.target.value }))} 
+            placeholder="✅ Entendido, tienes más tiempo." 
+          />
+        </div>
+        <div className="form-row">
+          <label>Mensaje de Cierre Definitivo</label>
+          <textarea 
+            rows={2} 
+            value={config.timeoutCloseMsg || ''} 
+            onChange={e => setConfig(c => ({ ...c, timeoutCloseMsg: e.target.value }))} 
+            placeholder="❌ Chat cerrado por inactividad. Escribe cualquier mensaje para volver a iniciar." 
+          />
+        </div>
       </div>
 
       <div className="form-section">
