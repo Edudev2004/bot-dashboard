@@ -12,7 +12,7 @@ import {
   PointElement,
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { fetchMessages } from '../services/api';
+import { fetchMessages, adminFetchUsers, adminUpdateUserStatus } from '../services/api';
 import { getNodes } from '../services/chatbotApi';
 import {
   LayoutDashboard,
@@ -69,6 +69,15 @@ const formatDate = (isoString) => {
   }
 };
 
+// Formatear número de teléfono (WhatsApp ID) para que se vea con prefijo y espacios
+const formatPhoneNumber = (chatId) => {
+  if (!chatId) return '';
+  const clean = String(chatId).replace(/\D/g, '');
+  if (clean.length < 5) return clean;
+  // Intento de formato simple: +CC NNN...
+  return `+${clean.slice(0, 2)} ${clean.slice(2, 5)} ${clean.slice(5)}`;
+};
+
 // Generamos las iniciales del avatar a partir del chatId
 const getInitials = (chatId = '') => String(chatId).slice(-2).toUpperCase();
 
@@ -83,12 +92,33 @@ const TYPE_CONFIG = {
 // Sub-componentes
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Badge de tipo con color personalizado
-const TypeBadge = ({ type }) => {
-  const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.otro;
+// Badge de estado de la interacción
+const StatusBadge = ({ msg }) => {
+  let label = 'En proceso';
+  let bg = 'rgba(99,102,241,0.15)';
+  let color = '#6366f1';
+
+  if (msg.isResolved) {
+    label = 'Resuelto';
+    bg = 'rgba(34,197,94,0.15)';
+    color = '#22c55e';
+  } else if (msg.isWarning) {
+    label = 'Aviso';
+    bg = 'rgba(249, 115, 22, 0.15)'; // orange
+    color = '#f97316';
+  } else if (msg.isFallback) {
+    label = 'Fallback';
+    bg = 'rgba(239, 68, 68, 0.15)'; // red
+    color = '#ef4444';
+  } else if (msg.isIgnored) {
+    label = 'Ignorado';
+    bg = 'rgba(107, 114, 128, 0.15)'; // gray
+    color = '#6b7280';
+  }
+
   return (
-    <span className="type-badge" style={{ background: cfg.bg, color: cfg.text }}>
-      {cfg.label}
+    <span className="type-badge" style={{ background: bg, color }}>
+      {label}
     </span>
   );
 };
@@ -139,6 +169,51 @@ const SourceBadge = ({ source }) => {
 
 // Componente reutilizable para Renderizar la tabla de Mensajes en distintas vistas
 const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
+
+  // Agrupar mensajes en Sesiones usando el sessionId
+  const sessions = useMemo(() => {
+    const grouped = {};
+    messages.forEach(msg => {
+      // Soporte 'legacy' si los mensajes viejos no tienen sessionId
+      const sid = msg.sessionId || `session_legacy_${msg.chatId}`;
+      if (!grouped[sid]) {
+        grouped[sid] = {
+          id: sid,
+          chatId: msg.chatId,
+          source: msg.source,
+          messages: [],
+          startDate: msg.date,
+          lastDate: msg.date,
+          statusMsg: msg // Usamos este para el status final
+        };
+      }
+      
+      grouped[sid].messages.push(msg);
+      
+      // Actualizar fecha final si es más reciente
+      if (new Date(msg.date) >= new Date(grouped[sid].lastDate)) {
+        grouped[sid].lastDate = msg.date;
+        // Si el estado de este nuevo es resuelto, lo marcamos permanente
+        if (!grouped[sid].statusMsg.isResolved) {
+          grouped[sid].statusMsg = msg;
+        }
+      }
+      
+      // La sesión se considera Resuelta si cualquier mensaje llegó a éxito
+      if (msg.isResolved) {
+        grouped[sid].statusMsg = msg;
+      }
+    });
+
+    // Convertir el Map a un Array y ordenar de la sesión más reciente a la más antigua
+    return Object.values(grouped).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+  }, [messages]);
+
+  const toggleExpand = (sid) => {
+    setExpandedSessionId(prev => prev === sid ? null : sid);
+  };
+
   return (
     <div className="card table-card" style={!isDashboard ? { marginTop: 24, marginBottom: 24 } : {}}>
       <div className="card-header">
@@ -167,24 +242,66 @@ const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
                 <th>Fuente</th>
                 <th>Usuario</th>
                 <th>Mensaje</th>
-                <th>Tipo</th>
+                <th>Estado</th>
                 <th>Fecha</th>
               </tr>
             </thead>
             <tbody>
-              {messages.map((msg, i) => (
-                <tr key={msg.id || i} className={i === 0 && isDashboard ? 'row-new' : ''}>
-                  <td><SourceBadge source={msg.source} /></td>
-                  <td>
-                    <div className="user-cell">
-                      <div className="table-avatar">{getInitials(msg.chatId)}</div>
-                      <span className="chat-id-text">{msg.chatId}</span>
-                    </div>
-                  </td>
-                  <td className="msg-text-cell">{msg.text}</td>
-                  <td><TypeBadge type={msg.type} /></td>
-                  <td className="date-cell">{formatDate(msg.date)}</td>
-                </tr>
+              {sessions.map((session, i) => (
+                <React.Fragment key={session.id}>
+                  {/* Fila Resumen de Sesión */}
+                  <tr 
+                    className={`session-row ${expandedSessionId === session.id ? 'expanded' : ''} ${i === 0 && isDashboard ? 'row-new' : ''}`}
+                    onClick={() => toggleExpand(session.id)}
+                    style={{ cursor: 'pointer' }}
+                    title="Haz clic para ver la conversación completa"
+                  >
+                    <td><SourceBadge source={session.source} /></td>
+                    <td>
+                      <div className="user-cell">
+                        <div className="table-avatar">{getInitials(session.chatId)}</div>
+                        <span className="chat-id-text">{formatPhoneNumber(session.chatId)}</span>
+                      </div>
+                    </td>
+                    <td className="msg-text-cell">
+                      <strong style={{ color: 'var(--text-main)' }}>{session.messages.length} mensaje(s)</strong> <span style={{ opacity: 0.6, fontSize: '13px' }}>en este flujo</span>
+                    </td>
+                    <td><StatusBadge msg={session.statusMsg} /></td>
+                    <td className="date-cell">{formatDate(session.lastDate)}</td>
+                  </tr>
+                  
+                  {/* Hilo Expandido (Accordion) */}
+                  {expandedSessionId === session.id && (
+                    <tr className="thread-row">
+                      <td colSpan="5" style={{ padding: 0, backgroundColor: 'var(--bg-card-hover)', borderBottom: '1px solid var(--border-color)' }}>
+                        <div className="thread-container" style={{ padding: '15px 20px', maxHeight: '400px', overflowY: 'auto' }}>
+                          <h4 style={{ marginTop: 0, marginBottom: '15px', fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Desglose de Conversación</h4>
+                          
+                          {/* Ordenamos cronológicamente ascendente para leer tipo WhatsApp */}
+                          {session.messages.sort((a,b) => new Date(a.date) - new Date(b.date)).map((msg, idx) => (
+                            <div key={idx} style={{ 
+                              display: 'flex', 
+                              gap: '15px', 
+                              marginBottom: '10px', 
+                              padding: '12px', 
+                              backgroundColor: 'var(--bg-body)', 
+                              borderRadius: '8px',
+                              alignItems: 'flex-start'
+                            }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '13.5px', color: 'var(--text-main)', marginBottom: '4px' }}>{msg.text || <i>(Archivo Media Adjunto)</i>}</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatDate(msg.date)}</div>
+                                </div>
+                                <div style={{ minWidth: '85px', textAlign: 'right' }}>
+                                  <StatusBadge msg={msg} />
+                                </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -208,18 +325,46 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
   const userId = localStorage.getItem('userId');
 
   const [nodes, setNodes] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const userRole = localStorage.getItem('role');
 
-  // Cargamos los mensajes iniciales y los nodos desde la API al montar el componente
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchMessages(), getNodes()])
-      .then(([msgs, nodesData]) => {
+    const promises = [fetchMessages(), getNodes()];
+    if (userRole === 'administrator') promises.push(adminFetchUsers());
+
+    Promise.all(promises)
+      .then(([msgs, nodesData, usersData]) => {
         setMessages(msgs);
         setNodes(nodesData);
+        if (usersData) setAllUsers(usersData);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [userRole]);
+
+  const loadAdminUsers = async () => {
+    setAdminLoading(true);
+    try {
+      const data = await adminFetchUsers();
+      setAllUsers(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const toggleUserStatus = async (userId, currentStatus) => {
+    try {
+      await adminUpdateUserStatus(userId, !currentStatus);
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: !currentStatus } : u));
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar el estado del usuario');
+    }
+  };
 
   // Nos subscribimos a los eventos de Socket.IO para recibir mensajes en vivo
   useEffect(() => {
@@ -374,9 +519,15 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
 
   // Nodos más visitados (Top 5)
   const topNodesData = useMemo(() => {
+    const rootNode = nodes.find(n => n.isRoot);
+    const rootId = rootNode ? rootNode.id : 'root';
+
     const nodeCounts = {};
     messages.forEach(m => {
-      if (m.nodeId) nodeCounts[m.nodeId] = (nodeCounts[m.nodeId] || 0) + 1;
+      // Excluimos el nodo raíz (bienvenida) para ver solo las opciones de interacción
+      if (m.nodeId && m.nodeId !== rootId) {
+        nodeCounts[m.nodeId] = (nodeCounts[m.nodeId] || 0) + 1;
+      }
     });
     const sorted = Object.entries(nodeCounts)
       .sort((a, b) => b[1] - a[1])
@@ -401,13 +552,15 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
   const botEffectivenessData = useMemo(() => {
     const resolved = messages.filter(m => m.isResolved).length;
     const fallback = messages.filter(m => m.isFallback).length;
-    const others = messages.length - resolved - fallback;
+    const warning = messages.filter(m => m.isWarning).length;
+    const ignored = messages.filter(m => m.isIgnored).length;
+    const others = messages.length - resolved - fallback - warning - ignored;
 
     return {
-      labels: ['Resueltos', 'Fallback', 'En Proceso'],
+      labels: ['Resueltos', 'Fallback', 'Aviso', 'Ignorado', 'En Proceso'],
       datasets: [{
-        data: [resolved, fallback, others],
-        backgroundColor: ['#22c55e', '#ef4444', '#f59e0b'],
+        data: [resolved, fallback, warning, ignored, others],
+        backgroundColor: ['#22c55e', '#ef4444', '#f97316', '#6b7280', '#f59e0b'],
         borderWidth: 0,
         cutout: '75%',
       }]
@@ -447,6 +600,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
     { id: 'pedidos',   icon: ShoppingCart,   label: 'Pedidos' },
     { id: 'botconfig', icon: Bot,            label: 'Bot Config' },
     { id: 'usuarios',  icon: Users,          label: 'Usuarios' },
+    ...(userRole === 'administrator' ? [{ id: 'admin', icon: UserCheck, label: 'Admin Panel' }] : [])
   ];
 
   return (
@@ -659,22 +813,34 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                   </div>
                   <div className="stat-icon-small"><Zap size={16} /></div>
                 </div>
-                <div className="chart-container-donut">
-                  <Doughnut data={botEffectivenessData} options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: {
-                        position: 'bottom',
-                        labels: { color: 'var(--text-muted)', usePointStyle: true, padding: 20 }
+                <div className="chart-container-donut" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '300px' }}>
+                  <div style={{ position: 'relative', width: '220px', height: '220px', margin: '0 auto' }}>
+                    <Doughnut data={botEffectivenessData} options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: false } // Extraemos la leyenda a HTML para no descuadrar el centro del canvas
                       }
-                    }
-                  }} />
-                  <div className="donut-center">
-                    <div className="donut-value">
-                      {Math.round((trends.counts.resolved / (trends.counts.total || 1)) * 100)}%
+                    }} />
+                    <div className="donut-center" style={{ position: 'absolute', top: '55%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                      <div className="donut-value" style={{ fontSize: '35px', fontWeight: 'bold' }}>
+                        {Math.round((trends.counts.resolved / (trends.counts.total || 1)) * 100)}%
+                      </div>
+                      <div className="donut-label" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8 }}>Éxito</div>
                     </div>
-                    <div className="donut-label">Éxito</div>
+                  </div>
+
+                  {/* Leyenda Custom HTML para mejor distribución vertical */}
+                  <div className="custom-chart-legend" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '15px', marginTop: '20px', width: '100%' }}>
+                    {botEffectivenessData.labels.map((label, idx) => (
+                      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: theme === 'dark' ? '#f1f5f9' : '#475569', fontWeight: 500 }}>
+                        <span style={{ 
+                          width: '12px', height: '12px', borderRadius: '50%', 
+                          backgroundColor: botEffectivenessData.datasets[0].backgroundColor[idx] 
+                        }}></span>
+                        {label}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -801,7 +967,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                         <td>
                           <div className="user-cell">
                             <div className="table-avatar">{getInitials(u.chatId)}</div>
-                            <span className="chat-id-text">{u.chatId}</span>
+                            <span className="chat-id-text">{formatPhoneNumber(u.chatId)}</span>
                           </div>
                         </td>
                         <td>
@@ -811,6 +977,81 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                         </td>
                         <td className="date-cell">{formatDate(u.firstDate)}</td>
                         <td className="date-cell">{formatDate(u.lastDate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 6. VISTA PANEL DE ADMINISTRACIÓN */}
+        {activeNav === 'admin' && userRole === 'administrator' && (
+          <div className="card table-card" style={{ marginTop: 24, marginBottom: 24 }}>
+            <div className="card-header">
+              <div>
+                <h3 className="card-title">Gestión de Usuarios</h3>
+                <p className="card-subtitle">Activa o desactiva las cuentas de los clientes</p>
+              </div>
+              <button 
+                className="btn btn-ghost btn-sm" 
+                onClick={loadAdminUsers}
+                disabled={adminLoading}
+              >
+                <RefreshCw size={14} className={adminLoading ? 'spin' : ''} />
+              </button>
+            </div>
+
+            {loading || adminLoading ? (
+              <div className="table-loading">
+                <div className="spinner" />
+                <span>Cargando usuarios...</span>
+              </div>
+            ) : (
+              <div className="table-scroll">
+                <table className="msg-table">
+                  <thead>
+                    <tr>
+                      <th>Usuario</th>
+                      <th>Email</th>
+                      <th>Teléfono</th>
+                      <th>Rol</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allUsers.map((u) => (
+                      <tr key={u.id}>
+                        <td>
+                          <div className="user-cell">
+                            <div className="table-avatar">{getInitials(u.username)}</div>
+                            <span className="chat-id-text">{u.username}</span>
+                          </div>
+                        </td>
+                        <td>{u.email}</td>
+                        <td className="date-cell">{u.phonePrefix} {u.phoneNumber}</td>
+                        <td>
+                           <span className="type-badge" style={{ background: u.role === 'administrator' ? 'rgba(168,85,247,0.1)' : 'rgba(99,102,241,0.1)', color: u.role === 'administrator' ? '#a855f7' : '#6366f1' }}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span className={`badge-status ${u.isActive !== false ? 'active' : 'inactive'}`}>
+                              {u.isActive !== false ? 'Activo' : 'Desactivado'}
+                            </span>
+                            {u.username !== 'admin' && (
+                              <button 
+                                className={`btn btn-sm ${u.isActive !== false ? 'btn-danger' : 'btn-success'}`}
+                                onClick={() => toggleUserStatus(u.id, u.isActive !== false)}
+                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                              >
+                                {u.isActive !== false ? 'Desactivar' : 'Activar'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
