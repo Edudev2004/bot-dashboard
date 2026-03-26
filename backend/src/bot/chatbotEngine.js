@@ -14,7 +14,6 @@ const { getSession, setSession }                             = require('../servi
 // ─── Comandos de reset / volver ───────────────────────────────────────────────
 const RESET_COMMANDS  = ['0', 'hola', 'inicio', 'menu', 'menú', 'start'];
 const BACK_COMMANDS   = ['atrás', 'atras', 'volver', 'back', '#'];
-const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
 // ─── Caché en memoria del árbol por cliente ────────────────────────────────────
 const nodeCache = new Map(); // ownerId → { nodes: {id: node}, ts }
@@ -110,15 +109,52 @@ const processMessage = async (ownerId, chatId, userInput) => {
   }
 
   // Cargar sesión
-  const session = await getSession(ownerId, chatId);
-  let { currentNodeId, navigationStack = [], updatedAt } = session;
+  let session = await getSession(ownerId, chatId) || {};
+  if (!session.sessionId) {
+    session.sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  }
 
-  // Lógica de expiración de sesión (5 minutos de inactividad)
+  let { currentNodeId, navigationStack = [], updatedAt, timeoutWarning, inExtension, invalidAttempts = 0, sessionId } = session;
+
+  // Helper para resetear spam counter cuando el usuario hace algo bien y evitar múltiples saves innecesarios
+  const resetSpamCounter = async (extraUpdate = {}) => {
+    if (invalidAttempts > 0 || Object.keys(extraUpdate).length > 0 || !session.updatedAt) {
+      invalidAttempts = 0;
+      await setSession(ownerId, chatId, { ...session, sessionId, invalidAttempts: 0, ...extraUpdate, updatedAt: new Date().toISOString() });
+    }
+  };
+
+  // Lógica de expiración de sesión dinámica fallback
   const now = Date.now();
   const lastActive = updatedAt ? new Date(updatedAt).getTime() : 0;
-  if (currentNodeId && (now - lastActive > SESSION_TIMEOUT_MS)) {
+  const sessionTimeoutMs = (config.timeoutMinutes || 5) * 60 * 1000;
+  
+  if (currentNodeId && (now - lastActive > sessionTimeoutMs)) {
     currentNodeId = null;
     navigationStack = [];
+    timeoutWarning = false;
+  }
+
+  // Si estábamos en advertencia de timeout, interceptar la respuesta para extender
+  if (timeoutWarning) {
+    if (input === '1') {
+      // Limpiamos el flag de advertencia y marcamos que está en extensión
+      await setSession(ownerId, chatId, { ...session, sessionId, timeoutWarning: false, inExtension: true, updatedAt: new Date().toISOString() });
+      
+      const currentNode = await getNode(ownerId, currentNodeId);
+      if (currentNode) {
+        return { 
+          text: `${config.timeoutExtensionMsg || '✅ Entendido, tienes más tiempo.'}\n\n${buildNodeMessage(currentNode, navigationStack.length > 0)}`, 
+          mediaUrl: null, 
+          mediaType: null, 
+          nodeId: currentNode.id,
+          isResolved: true 
+        };
+      }
+    } else {
+      // Si respondió otra cosa, también limpiamos la advertencia pero procesa normalmente
+      await setSession(ownerId, chatId, { ...session, sessionId, timeoutWarning: false, inExtension: false, updatedAt: new Date().toISOString() });
+    }
   }
 
   // ── 1. Comandos de RESET ─────────────────────────────────────────────────────
@@ -127,7 +163,7 @@ const processMessage = async (ownerId, chatId, userInput) => {
     if (!rootNode) {
       return { text: config.greeting || '¡Hola! 👋', mediaUrl: null, mediaType: null, nodeId: null };
     }
-    await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
+    await resetSpamCounter({ currentNodeId: rootNode.id, navigationStack: [] });
     const greeting = config.greeting || '¡Hola! 👋';
     const menu = buildNodeMessage(rootNode);
     // Evitamos duplicar en el mensaje de reset
@@ -153,7 +189,7 @@ const processMessage = async (ownerId, chatId, userInput) => {
     // Evitamos duplicar si el usuario puso lo mismo en el saludo y en el mensaje del nodo raíz
     const text = menu.includes(greeting) ? menu : `${greeting}\n\n${menu}`;
     
-    await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
+    await resetSpamCounter({ currentNodeId: rootNode.id, navigationStack: [] });
     return {
       text,
       mediaUrl: null,
@@ -176,7 +212,7 @@ const processMessage = async (ownerId, chatId, userInput) => {
     if (navigationStack.length === 0) {
       const rootNode = await getRootNode(ownerId);
       if (!rootNode) return { text: config.fallbackMessage, mediaUrl: null, mediaType: null, isFallback: true };
-      await setSession(ownerId, chatId, { currentNodeId: rootNode.id, navigationStack: [] });
+      await resetSpamCounter({ currentNodeId: rootNode.id, navigationStack: [] });
       return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null, nodeId: rootNode.id };
     }
     const previousNodeId = navigationStack[navigationStack.length - 1];
@@ -184,10 +220,10 @@ const processMessage = async (ownerId, chatId, userInput) => {
     const previousNode = await getNode(ownerId, previousNodeId);
     if (!previousNode) {
       const rootNode = await getRootNode(ownerId);
-      await setSession(ownerId, chatId, { currentNodeId: rootNode?.id || null, navigationStack: [] });
+      await resetSpamCounter({ currentNodeId: rootNode?.id || null, navigationStack: [] });
       return { text: buildNodeMessage(rootNode), mediaUrl: null, mediaType: null, nodeId: rootNode?.id };
     }
-    await setSession(ownerId, chatId, { currentNodeId: previousNodeId, navigationStack: newStack });
+    await resetSpamCounter({ currentNodeId: previousNodeId, navigationStack: newStack });
     return { text: buildNodeMessage(previousNode, newStack.length > 0), mediaUrl: null, mediaType: null, nodeId: previousNodeId };
   }
 
@@ -217,7 +253,7 @@ const processMessage = async (ownerId, chatId, userInput) => {
       }
 
       const newStack = [...navigationStack, currentNodeId];
-      await setSession(ownerId, chatId, { currentNodeId: nextNode.id, navigationStack: newStack });
+      await resetSpamCounter({ currentNodeId: nextNode.id, navigationStack: newStack });
 
       // Nodo tipo response → devolver contenido directo (CONSIDERAMOS ESTO COMO RESUELTO)
       if (nextNode.type === 'response') {
@@ -250,6 +286,7 @@ const processMessage = async (ownerId, chatId, userInput) => {
       };
     }
 
+    await resetSpamCounter(); // Reset si acertó opción (aunque no navegó)
     return {
       text: `${selected.label}\n\n✅ ¿Necesitas algo más? Escribe *0* o una opción del menú.`,
       mediaUrl: null,
@@ -265,17 +302,53 @@ const processMessage = async (ownerId, chatId, userInput) => {
   );
 
   if (matched) {
+    await resetSpamCounter();
     return { text: matched.response, mediaUrl: null, mediaType: null, isResolved: true };
   }
 
-  // ── 7. Fallback ───────────────────────────────────────────────────────────────
+  // ── 7. Fallback & Smart Silence (Anti-Spam) ──────────────────────────────────
   const fallback = config.fallbackMessage ||
     'No entiendo tu mensaje. Escribe *0* para ver el menú principal.';
   
-  // Refrescamos el timestamp de la sesión incluso en fallo para evitar el reset si el usuario sigue intentando
-  await setSession(ownerId, chatId, { currentNodeId, navigationStack });
+  // Incrementar contador de spam / invalid attempts
+  const currentAttempts = invalidAttempts + 1;
+  const isLeafNode = !currentNode || !currentNode.options || currentNode.options.length === 0;
   
-  return { text: fallback, mediaUrl: null, mediaType: null, isFallback: true };
+  // Refrescamos la sesión sin resetear el contador de spam
+  await setSession(ownerId, chatId, { 
+    ...session, 
+    sessionId,
+    currentNodeId, 
+    navigationStack, 
+    invalidAttempts: currentAttempts, // Mantenemos la cuenta hasta que lo haga bien o mande un comando
+    updatedAt: new Date().toISOString()
+  });
+
+  // Intentos 1 y 2 -> Silencio Inteligente: ignoramos la consulta completamente en WhatsApp
+  if (currentAttempts < 3) {
+    return { text: null, mediaUrl: null, mediaType: null, isIgnored: true, ignored: true };
+  }
+
+  // Intento 3 -> Aviso de qué deben hacer exactamente
+  if (currentAttempts === 3) {
+    const warningMsg = isLeafNode 
+      ? `⚠️ Por favor, responde con *0* para volver al menú principal.`
+      : `⚠️ Por favor, selecciona una de las opciones numéricas del menú enviando solo el número.`;
+    return { 
+      text: warningMsg, 
+      mediaUrl: null, 
+      mediaType: null, 
+      isWarning: true 
+    };
+  }
+
+  // Intento 4 a más -> Mostramos el Fallback personalizado
+  return { 
+    text: fallback, 
+    mediaUrl: null, 
+    mediaType: null, 
+    isFallback: true 
+  };
 };
 
 module.exports = { processMessage, preloadCache, invalidateCache, buildNodeMessage };
