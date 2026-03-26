@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Lock, User, Eye, EyeOff, Bot } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { login } from '../services/api';
+import arboraBlack from '../assets/ARBORA-BLACK.png';
+import arboraWhite from '../assets/ARBORA-WHITE.png';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, theme }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,65 +32,73 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="login-page">
-      <div className="login-bg-shapes">
-        <div className="shape shape-1"></div>
-        <div className="shape shape-2"></div>
-      </div>
-
-      <div className="card login-card">
-        <div className="login-header">
-          <div className="logo-icon large">
-            <Bot size={32} color="#fff" />
+      <div className="login-side-image"></div>
+      
+      <div className="login-form-container">
+        <div className="card login-card">
+          <div className="login-header">
+            <img 
+              src={theme === 'dark' ? arboraWhite : arboraBlack} 
+              alt="Arbora Logo" 
+              className="logo-image" 
+              style={{ marginBottom: 24, maxHeight: 40 }}
+            />
+            <h1>¡Bienvenido!</h1>
+            <p>Por favor, ingresa tus datos para continuar.</p>
           </div>
-          <h1>BotDash</h1>
-          <p>Bienvenido de nuevo. Inicia sesión para continuar.</p>
-        </div>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && <div className="login-error">{error}</div>}
+          <form onSubmit={handleSubmit} className="login-form">
+            {error && <div className="login-error">{error}</div>}
 
-          <div className="input-group">
-            <label>Usuario</label>
-            <div className="input-wrapper">
-              <User size={18} className="input-icon" />
-              <input
-                type="text"
-                placeholder="Nombre de usuario"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
+            <div className="input-group">
+              <label>Usuario</label>
+              <div className="input-wrapper">
+                <input
+                  type="text"
+                  placeholder="Ingresa tu usuario"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="input-group">
-            <label>Contraseña</label>
-            <div className="input-wrapper">
-              <Lock size={18} className="input-icon" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+            <div className="input-group">
+              <label>Contraseña</label>
+              <div className="input-wrapper">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-minimal"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} color="#fff" /> : <Eye size={18} color="#fff" />}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <button type="submit" className="login-btn" disabled={isLoading}>
-            {isLoading ? <div className="spinner-small"></div> : 'Entrar al Dashboard'}
-          </button>
-        </form>
+            <div className="login-options">
+              <label className="remember-me">
+                <input type="checkbox" />
+                <span>Recordarme</span>
+              </label>
+              <a href="#" className="forgot-password">¿Olvidaste tu contraseña?</a>
+            </div>
 
-        <div className="login-footer">
-          <p>&copy; 2026 Bot-Dashboard. Todos los derechos reservados.</p>
+            <button type="submit" className="login-btn" disabled={isLoading}>
+              {isLoading ? <div className="spinner-small"></div> : 'Iniciar sesión'}
+            </button>
+          </form>
+
+          <footer className="register-footer">
+            <p>¿No tienes una cuenta? <a href="#" className="register-link">Regístrate aquí</a></p>
+          </footer>
         </div>
       </div>
     </div>

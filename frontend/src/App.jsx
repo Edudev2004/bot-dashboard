@@ -31,7 +31,7 @@ function App() {
       {isLoggedIn ? (
         <Dashboard theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />
       ) : (
-        <Login onLogin={handleLogin} />
+        <Login onLogin={handleLogin} theme={theme} />
       )}
     </div>
   );

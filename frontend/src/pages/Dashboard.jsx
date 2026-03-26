@@ -42,6 +42,8 @@ import {
 } from 'lucide-react';
 import ChatbotEditor from './ChatbotEditor';
 import socket from '../services/socket';
+import arboraBlack from '../assets/ARBORA-BLACK.png';
+import arboraWhite from '../assets/ARBORA-WHITE.png';
 
 // Registramos los módulos de Chart.js que vamos a usar
 ChartJS.register(
@@ -482,10 +484,11 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
       <aside className="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
-          <div className="logo-icon">
-            <Bot size={22} color="#fff" />
-          </div>
-          <span className="logo-text">BotDash</span>
+          <img 
+            src={theme === 'dark' ? arboraWhite : arboraBlack} 
+            alt="Arbora Logo" 
+            className="logo-image" 
+          />
         </div>
 
         {/* Navegación principal */}
