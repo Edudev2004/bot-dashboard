@@ -4,7 +4,7 @@ import { login } from '../services/api';
 import arboraBlack from '../assets/ARBORA-BLACK.png';
 import arboraWhite from '../assets/ARBORA-WHITE.png';
 
-export default function Login({ onLogin, theme }) {
+export default function Login({ onLogin, onSwitchToRegister, theme }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,6 +22,7 @@ export default function Login({ onLogin, theme }) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', data.username);
       localStorage.setItem('userId', data.userId);
+      localStorage.setItem('role', data.role);
       onLogin();
     } catch (err) {
       const msg = err.response?.data?.error || 'Error al conectar con el servidor';
@@ -48,7 +49,11 @@ export default function Login({ onLogin, theme }) {
           </div>
 
           <form onSubmit={handleSubmit} className="login-form">
-            {error && <div className="login-error">{error}</div>}
+            {error && (
+              <div className={error.toLowerCase().includes('desactivada') ? 'login-warning' : 'login-error'}>
+                {error}
+              </div>
+            )}
 
             <div className="input-group">
               <label>Usuario</label>
@@ -97,7 +102,7 @@ export default function Login({ onLogin, theme }) {
           </form>
 
           <footer className="register-footer">
-            <p>¿No tienes una cuenta? <a href="#" className="register-link">Regístrate aquí</a></p>
+            <p>¿No tienes una cuenta? <button onClick={onSwitchToRegister} className="register-link" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Regístrate aquí</button></p>
           </footer>
         </div>
       </div>

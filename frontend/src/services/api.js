@@ -39,6 +39,14 @@ export const login = async (username, password) => {
 };
 
 /**
+ * Registro de nuevo usuario
+ */
+export const register = async (userData) => {
+  const response = await api.post('/api/register', userData);
+  return response.data;
+};
+
+/**
  * Obtiene la configuración del bot (Menu, etc)
  */
 export const fetchBotConfig = async () => {
@@ -64,6 +72,22 @@ export const uploadFile = async (file) => {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
   return response.data; // { url }
+};
+
+/**
+ * Obtiene todos los usuarios (Solo Admin)
+ */
+export const adminFetchUsers = async () => {
+  const response = await api.get('/api/admin/users');
+  return response.data;
+};
+
+/**
+ * Activa/Desactiva un usuario (Solo Admin)
+ */
+export const adminUpdateUserStatus = async (userId, isActive) => {
+  const response = await api.patch(`/api/admin/users/${userId}/status`, { isActive });
+  return response.data;
 };
 
 export default api;

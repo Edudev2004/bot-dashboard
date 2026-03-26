@@ -16,19 +16,59 @@ const findUserByUsername = async (username) => {
 };
 
 /**
- * Registra un nuevo usuario (útil para crear el primer admin)
+ * Registra un nuevo usuario
  */
-const createUser = async (username, password) => {
+const createUser = async (userData) => {
+  const { username, password, email, phonePrefix, phoneNumber, role = 'client' } = userData;
+  
+  // Verificar si el usuario o email ya existen
+  const existingUser = await findUserByUsername(username);
+  if (existingUser) {
+    throw new Error('El nombre de usuario ya está en uso');
+  }
+
+  const existingEmail = await db.collection('users')
+    .where('email', '==', email)
+    .limit(1)
+    .get();
+  
+  if (!existingEmail.empty) {
+    throw new Error('El correo electrónico ya está registrado');
+  }
+
   // Ciframos la contraseña antes de guardarla
   const hashedPassword = await bcrypt.hash(password, 10);
   
-  const docRef = await db.collection('users').add({
+  const newUser = {
     username,
+    email,
+    phonePrefix,
+    phoneNumber,
     password: hashedPassword,
+    role,
+    isActive: true, // Por defecto activado
     createdAt: new Date().toISOString()
-  });
+  };
 
-  return { id: docRef.id, username };
+  const docRef = await db.collection('users').add(newUser);
+
+  return { id: docRef.id, username, email, role, isActive: true };
+};
+
+/**
+ * Obtiene todos los usuarios (Rol: administrator)
+ */
+const getAllUsers = async () => {
+  const snapshot = await db.collection('users').get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+/**
+ * Actualiza el estado de activación de un usuario
+ */
+const updateUserStatus = async (userId, isActive) => {
+  await db.collection('users').doc(userId).update({ isActive });
+  return { id: userId, isActive };
 };
 
 /**
@@ -38,4 +78,4 @@ const verifyPassword = async (plainPassword, hashedPassword) => {
   return await bcrypt.compare(plainPassword, hashedPassword);
 };
 
-module.exports = { findUserByUsername, createUser, verifyPassword };
+module.exports = { findUserByUsername, createUser, verifyPassword, getAllUsers, updateUserStatus };

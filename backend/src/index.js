@@ -9,8 +9,8 @@ const fs      = require('fs');
 
 const { initSocket }          = require('./sockets/socketManager');
 const { getMessagesByOwner, getBotConfig, setBotConfig, storage } = require('./services/firestoreService');
-const { findUserByUsername, createUser, verifyPassword }          = require('./services/authService');
-const { initBotForUser, setupWhatsAppSockets, updateBotConfigCache } = require('./bot/whatsapp');
+const { findUserByUsername, createUser, verifyPassword, getAllUsers, updateUserStatus }          = require('./services/authService');
+const { initBotForUser, setupWhatsAppSockets, updateBotConfigCache, stopAllBotsForUser } = require('./bot/whatsapp');
 const {
   getAllNodes,
   saveNode,
@@ -52,11 +52,30 @@ const authenticateToken = (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No autorizado' });
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
         if (err) return res.status(403).json({ error: 'Token inválido o expirado' });
-        req.user = user;
-        next();
+        
+        // Verificar en DB si sigue activo
+        try {
+            const user = await findUserByUsername(decoded.username);
+            if (!user || user.isActive === false) {
+                return res.status(403).json({ error: 'Cuenta desactivada o no encontrada' });
+            }
+            req.user = decoded;
+            next();
+        } catch (dbErr) {
+            res.status(500).json({ error: 'Error de servidor en autentificación' });
+        }
     });
+};
+
+// --- Admin Middleware ---
+const isAdmin = (req, res, next) => {
+    if (req.user && req.user.role === 'administrator') {
+        next();
+    } else {
+        res.status(403).json({ error: 'Acceso denegado: Se requieren permisos de administrador' });
+    }
 };
 
 // ─── Seed admin ───────────────────────────────────────────────────────────────
@@ -65,7 +84,12 @@ const seedAdmin = async () => {
         const admin = await findUserByUsername('admin');
         if (!admin) {
             console.log('[Auth] Sembrando primer usuario administrador...');
-            await createUser('admin', 'admin');
+            await createUser({ 
+                username: 'admin', 
+                password: 'admin', 
+                email: 'admin@arbora.com', 
+                role: 'administrator' 
+            });
         }
     } catch (err) {
         console.error('[Error] Fallo al sembrar admin:', err.message);
@@ -74,6 +98,19 @@ const seedAdmin = async () => {
 seedAdmin();
 
 // ─── RUTAS DE AUTENTICACIÓN ───────────────────────────────────────────────────
+
+app.post('/api/register', async (req, res) => {
+    try {
+        const newUser = await createUser(req.body);
+        res.status(201).json({ 
+            message: 'Usuario registrado con éxito', 
+            userId: newUser.id 
+        });
+    } catch (err) {
+        console.error('[Auth] Error en registro:', err.message);
+        res.status(400).json({ error: err.message });
+    }
+});
 
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
@@ -84,17 +121,51 @@ app.post('/api/login', async (req, res) => {
         const isValid = await verifyPassword(password, user.password);
         if (!isValid) return res.status(401).json({ error: 'Contraseña incorrecta' });
 
-        // El bot se iniciará bajo demanda desde el dashboard o al unir el socket
-        // initBotForUser(user.id);
+        // Verificar si el usuario está activo
+        if (user.isActive === false) {
+            return res.status(403).json({ error: 'Tu cuenta ha sido desactivada. Contacta al administrador.' });
+        }
 
         const token = jwt.sign(
-            { id: user.id, username: user.username },
+            { id: user.id, username: user.username, role: user.role || 'client' },
             JWT_SECRET,
             { expiresIn: '12h' }
         );
-        res.json({ token, username: user.username, userId: user.id });
+        res.json({ 
+            token, 
+            username: user.username, 
+            userId: user.id,
+            role: user.role || 'client'
+        });
     } catch (err) {
         res.status(500).json({ error: 'Error en el servidor' });
+    }
+});
+
+// ─── ADMINISTRACIÓN DE USUARIOS ────────────────────────────────────────────────
+app.get('/api/admin/users', authenticateToken, isAdmin, async (req, res) => {
+    try {
+        const users = await getAllUsers();
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ error: 'Error al obtener usuarios' });
+    }
+});
+
+app.patch('/api/admin/users/:id/status', authenticateToken, isAdmin, async (req, res) => {
+    const { isActive } = req.body;
+    const { id } = req.params;
+    try {
+        await updateUserStatus(id, isActive);
+        
+        // Si se desactiva, detenemos sus bots inmediatamente
+        if (isActive === false) {
+            await stopAllBotsForUser(id);
+        }
+
+        res.json({ message: 'Estado de usuario actualizado' });
+    } catch (err) {
+        res.status(500).json({ error: 'Error al actualizar estado' });
     }
 });
 
