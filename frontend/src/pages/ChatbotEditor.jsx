@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import {
   FolderTree,
   FileText,
@@ -17,8 +17,12 @@ import {
   Link as LinkIcon,
   Loader2,
   Bot,
-  AlertTriangle
+  AlertTriangle,
+  Network,
+  List
 } from 'lucide-react';
+
+const FlowEditor = lazy(() => import('./FlowEditor'));
 import {
   getNodes,
   saveNode,
@@ -198,7 +202,7 @@ function NodeModal({ node, allNodes, onSave, onClose }) {
   const showOptions  = form.type !== 'response';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{form.id ? 'Editar Nodo' : 'Nuevo Nodo'}</h2>
@@ -484,6 +488,7 @@ export default function ChatbotEditor() {
   const [showConfig, setShowConfig]   = useState(false);
   const [toast, setToast]             = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [viewMode, setViewMode]       = useState('tree'); // 'tree' | 'flow'
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -534,12 +539,31 @@ export default function ChatbotEditor() {
           <p className="editor-subtitle">Construye el flujo de conversación de tu bot</p>
         </div>
         <div className="editor-header-actions">
+          {/* Toggle de vista */}
+          <div className="view-toggle">
+            <button
+              className={`view-toggle-btn${viewMode === 'tree' ? ' active' : ''}`}
+              onClick={() => setViewMode('tree')}
+              title="Vista árbol clásica"
+            >
+              <List size={15} /> Árbol
+            </button>
+            <button
+              className={`view-toggle-btn${viewMode === 'flow' ? ' active' : ''}`}
+              onClick={() => setViewMode('flow')}
+              title="Herramienta gráfica de nodos"
+            >
+              <Network size={15} /> Mapa Gráfico
+            </button>
+          </div>
           <button className="btn btn-ghost" onClick={() => setShowConfig(v => !v)}>
             <Settings size={18} /> Configuración
           </button>
-          <button className="btn btn-primary" onClick={() => setEditingNode(emptyNode())}>
-            <Plus size={18} /> Nuevo nodo
-          </button>
+          {viewMode === 'tree' && (
+            <button className="btn btn-primary" onClick={() => setEditingNode(emptyNode())}>
+              <Plus size={18} /> Nuevo nodo
+            </button>
+          )}
         </div>
       </div>
 
@@ -548,35 +572,46 @@ export default function ChatbotEditor() {
       {/* Panel de config */}
       {showConfig && <GeneralConfigPanel onClose={() => setShowConfig(false)} />}
 
-      {/* Árbol de nodos */}
-      <div className="editor-tree">
-        {loading ? (
-          <div className="panel-loading"><Loader2 size={18} className="spin" /> Cargando árbol de nodos...</div>
-        ) : !hasNodes ? (
-          <div className="empty-state">
-            <div className="empty-icon"><Bot size={48} /></div>
-            <h3>Aún no tienes nodos configurados</h3>
-            <p>Crea tu primer nodo y empieza a construir el flujo de tu chatbot.</p>
-            <button className="btn btn-primary" onClick={() => setEditingNode({ ...emptyNode(), isRoot: true })}>
-              <Plus size={18} /> Crear nodo raíz
-            </button>
-          </div>
-        ) : (
-          <div className="tree-container">
-            {tree.map(node => (
-              <TreeNode
-                key={node.id}
-                node={node}
-                allNodes={nodes}
-                onEdit={setEditingNode}
-                onAddChild={handleAddChild}
-                onDelete={setDeleteTarget}
-                depth={0}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Vistas: Árbol o Mapa Gráfico */}
+      {viewMode === 'tree' ? (
+        <div className="editor-tree">
+          {loading ? (
+            <div className="panel-loading"><Loader2 size={18} className="spin" /> Cargando árbol de nodos...</div>
+          ) : !hasNodes ? (
+            <div className="empty-state">
+              <div className="empty-icon"><Bot size={48} /></div>
+              <h3>Aún no tienes nodos configurados</h3>
+              <p>Crea tu primer nodo y empieza a construir el flujo de tu chatbot.</p>
+              <button className="btn btn-primary" onClick={() => setEditingNode({ ...emptyNode(), isRoot: true })}>
+                <Plus size={18} /> Crear nodo raíz
+              </button>
+            </div>
+          ) : (
+            <div className="tree-container">
+              {tree.map(node => (
+                <TreeNode
+                  key={node.id}
+                  node={node}
+                  allNodes={nodes}
+                  onEdit={setEditingNode}
+                  onAddChild={handleAddChild}
+                  onDelete={setDeleteTarget}
+                  depth={0}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <Suspense fallback={<div className="panel-loading"><Loader2 size={18} className="spin" /> Cargando editor gráfico...</div>}>
+          <FlowEditor
+            nodes={nodes}
+            onEditNode={setEditingNode}
+            onReloadNodes={loadNodes}
+            onDeleteNode={setDeleteTarget}
+          />
+        </Suspense>
+      )}
 
       {/* Modal de edición */}
       {editingNode && (
@@ -590,7 +625,7 @@ export default function ChatbotEditor() {
 
       {/* Confirm eliminación */}
       {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+        <div className="modal-overlay">
           <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
             <h3><AlertTriangle size={20} color="#ef4444" /> ¿Eliminar este nodo?</h3>
             <p>Se eliminará <strong>"{deleteTarget.message?.slice(0, 60)}"</strong> y todas sus opciones. Las referencias desde otros nodos quedarán vacías.</p>

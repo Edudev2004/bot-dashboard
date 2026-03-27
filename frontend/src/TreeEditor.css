@@ -429,3 +429,249 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── VIEW TOGGLE (Árbol / Mapa Gráfico) ─────────────────────────────────── */
+.view-toggle {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.view-toggle-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
+}
+
+.view-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.4);
+}
+
+/* ─── FLOW EDITOR CANVAS ─────────────────────────────────────────────────── */
+.flow-editor-wrap {
+  height: calc(100vh - 190px);
+  min-height: 480px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0f0f1e;
+}
+
+/* ─── NODO CUSTOM ────────────────────────────────────────────────────────── */
+.flow-node-card {
+  background: rgba(20,20,40,0.9);
+  border: 2px solid #6366f1;
+  border-radius: 12px;
+  padding: 10px 14px;
+  min-width: 180px;
+  max-width: 240px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
+  backdrop-filter: blur(6px);
+}
+
+.flow-node-card:hover {
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.3), 0 8px 24px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+.flow-node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.flow-node-type {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.flow-node-root-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  background: rgba(99,102,241,0.3);
+  color: #a5b4fc;
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.5px;
+}
+
+.flow-node-label {
+  font-size: 13px;
+  color: #e2e8f0;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ─── HANDLES ────────────────────────────────────────────────────────────── */
+.flow-handle {
+  width: 12px !important;
+  height: 12px !important;
+  border: 2px solid #6366f1 !important;
+  background: #0f0f1e !important;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.flow-handle:hover {
+  background: #6366f1 !important;
+  transform: scale(1.3);
+}
+
+/* ─── PANEL DE AYUDA (top-right) ───────────────────────────────────────── */
+.flow-panel-top {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(15,15,35,0.85) !important;
+  border: 1px solid rgba(99,102,241,0.25) !important;
+  border-radius: 10px !important;
+  backdrop-filter: blur(8px);
+}
+
+/* ─── Panel superior izq: Añadir Nodo ─────────────────────────────────────── */
+.flow-panel-top-left {
+  padding: 8px !important;
+  background: transparent !important;
+}
+
+.flow-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.35) !important;
+  transition: transform 0.15s, box-shadow 0.15s !important;
+}
+
+.flow-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.5) !important;
+}
+
+.flow-auto-btn {
+  font-size: 12px !important;
+  padding: 5px 10px !important;
+  white-space: nowrap;
+}
+
+.flow-hint {
+  font-size: 11px;
+  color: rgba(165,180,252,0.6);
+  white-space: nowrap;
+}
+
+/* ─── CONTROLES y MINIMAP (overrides React Flow dark) ───────────────────── */
+.flow-controls {
+  background: rgba(15,15,35,0.85) !important;
+  border: 1px solid rgba(99,102,241,0.25) !important;
+  border-radius: 10px !important;
+}
+
+.flow-controls button {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(99,102,241,0.15) !important;
+  color: #a5b4fc !important;
+}
+
+.flow-controls button:hover {
+  background: rgba(99,102,241,0.15) !important;
+}
+
+.flow-minimap {
+  background: rgba(15,15,35,0.9) !important;
+  border: 1px solid rgba(99,102,241,0.25) !important;
+  border-radius: 10px !important;
+}
+
+/* React Flow core dark overrides */
+.react-flow__edge-path {
+  stroke: #6366f1;
+  stroke-width: 2px;
+}
+
+.react-flow__edge-label-renderer {
+  color: #a5b4fc;
+}
+
+.react-flow__selection {
+  background: rgba(99,102,241,0.08) !important;
+  border: 1px dashed #6366f1 !important;
+}
+
+/* ─── TACHO DE BASURA (drag to delete) ───────────────────────────────────── */
+.flow-trash-panel {
+  pointer-events: none; /* Que el canvas de atrás reciba los drag events */
+  z-index: 100;
+  margin-bottom: 20px !important;
+}
+
+.flow-trash-zone {
+  width: 250px;
+  height: 80px;
+  border: 2px dashed #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  pointer-events: auto; /* Para que intercepte si fuera necesario, pero lo manejamos por coordenadas manuales */
+}
+
+.flow-trash-zone.over {
+  background: rgba(239, 68, 68, 0.25);
+  border: 2px solid #ef4444;
+  color: #fca5a5;
+  transform: scale(1.05);
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);
+}
+
+.shake {
+  animation: trashShake 0.4s cubic-bezier(.36,.07,.19,.97) both infinite;
+}
+
+@keyframes trashShake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-2px, 0, 0); }
+  40%, 60% { transform: translate3d(2px, 0, 0); }
+}
+

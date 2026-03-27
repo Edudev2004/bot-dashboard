@@ -126,17 +126,19 @@ const saveNode = async (ownerId, nodeData) => {
     await rootBatch.commit();
   }
 
-  await nodeRef.set(
-    {
-      ...data,
-      ownerId,
-      responseType: data.responseType || null,
-      responseContent: data.responseContent || null,
-      parentNodeId: data.parentNodeId || null,
-      updatedAt: new Date().toISOString()
-    },
-    { merge: true }
-  );
+  const updatePayload = {
+    ...data,
+    ownerId,
+    updatedAt: new Date().toISOString()
+  };
+
+  if ('responseType' in data) updatePayload.responseType = data.responseType || null;
+  if ('responseContent' in data) updatePayload.responseContent = data.responseContent || null;
+  if ('parentNodeId' in data) updatePayload.parentNodeId = data.parentNodeId || null;
+  if ('posX' in data) updatePayload.posX = data.posX ?? null;
+  if ('posY' in data) updatePayload.posY = data.posY ?? null;
+
+  await nodeRef.set(updatePayload, { merge: true });
 
   // Reemplazar opciones si se proporcionaron
   if (Array.isArray(options)) {

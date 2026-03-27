@@ -304,6 +304,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
+  margin-top: 20px;
   box-shadow: var(--shadow-sm);
   transition: var(--transition);
   cursor: default;

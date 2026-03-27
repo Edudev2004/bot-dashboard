@@ -26,6 +26,16 @@ export const saveNode = async (nodeData) => {
   return res.json();
 };
 
+export const updateNodePosition = async (nodeId, posX, posY) => {
+  const res = await fetch(`${API_URL}/api/chatbot/nodes`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ id: nodeId, posX, posY })
+  });
+  if (!res.ok) throw new Error('Error al guardar posición');
+  return res.json();
+};
+
 export const deleteNode = async (nodeId) => {
   const res = await fetch(`${API_URL}/api/chatbot/nodes/${nodeId}`, {
     method: 'DELETE',

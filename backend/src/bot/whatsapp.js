@@ -75,13 +75,11 @@ const initBotForUser = async (userId, instanceId = null) => {
     });
 
     client.on('message', async (msg) => {
-        if (msg.from === 'status@broadcast') return;
-        
-        // --- FILTRO DE GRUPOS ---
-        // Solo respondemos a chats individuales (terminan en @c.us)
-        // Ignoramos grupos (terminan en @g.us)
-        if (msg.from.endsWith('@g.us')) {
-            // console.log(`[WhatsApp ${actualInstanceId}] Ignorando mensaje de grupo: ${msg.from}`);
+        // --- FILTRO DE SEGURIDAD ---
+        // Ignoramos específicamente: Grupos (@g.us), Canales/Newsletters (@newsletter), y Estados (status@broadcast)
+        // Todo lo demás (chats personales con @c.us, @s.whatsapp.net, etc.) pasa al motor.
+        if (msg.from.endsWith('@g.us') || msg.from.endsWith('@newsletter') || msg.from.endsWith('@broadcast')) {
+            // console.log(`[WhatsApp ${actualInstanceId}] Mensaje ignorado intencionalmente: ${msg.from}`);
             return;
         }
 
@@ -89,9 +87,8 @@ const initBotForUser = async (userId, instanceId = null) => {
         const date    = new Date().toISOString();
 
         try {
-            // Obtener el contacto real para evitar IDs internos (LIDs) que confunden al dashboard
-            const contact = await msg.getContact();
-            const contactNumber = contact.number || msg.from.split('@')[0];
+            // Obtener el número de forma directa e instantánea para evitar de 5 a 7 segundos de retraso
+            const contactNumber = msg.from.split('@')[0];
 
             const queueKey = `${userId}_${contactNumber}`;
 
@@ -122,7 +119,28 @@ const initBotForUser = async (userId, instanceId = null) => {
                     isWarning 
                 } = botResponse;
 
-                // Capturar sessionId para el empaquetado del hilos en el Dashboard
+                // 🚀 OPTIMIZACIÓN EXTREMA: Enviar la respuesta a WhatsApp INMEDIATAMENTE
+                // Esto ocurre ANTES de preguntar a la base de datos por sesiones o guardar logs.
+                if (!ignored && (text || mediaUrl)) {
+                    const sendFastReply = async () => {
+                        if (mediaUrl) {
+                            try {
+                                const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
+                                await client.sendMessage(msg.from, media, { caption: text || undefined });
+                            } catch (mediaErr) {
+                                console.error(`[WhatsApp ${userId}] Error enviando media:`, mediaErr.message);
+                                if (text) await client.sendMessage(msg.from, text);
+                            }
+                        } else if (text) {
+                            await client.sendMessage(msg.from, text);
+                        }
+                    };
+                    
+                    // Disparamos en segundo plano (Fire-and-forget) para que el chat responda en <1 segundo
+                    sendFastReply().catch(e => console.error("Error al enviar respuesta rápida:", e));
+                }
+
+                // Capturar sessionId para el empaquetado de hilos en el Dashboard
                 const currentSession = await getSession(userId, contactNumber);
                 const currentSessionId = currentSession ? currentSession.sessionId : `sess_${Date.now()}`;
 
@@ -147,26 +165,10 @@ const initBotForUser = async (userId, instanceId = null) => {
                     return;
                 }
 
-                // 2. Guardar y emitir mensaje al Dashboard ASINCRONAMENTE (Fire-and-forget)
-                // Esto ahorra tiempo enorme de base de datos antes de enviar a WhatsApp
+                // Guardar y emitir mensaje al Dashboard ASINCRONAMENTE
                 saveMessage(logData).then(savedMessage => {
                     getIO().to(`user_${userId}`).emit('new_message', savedMessage);
                 }).catch(e => console.error("Error guardando el mensaje:", e));
-
-                if (!text && !mediaUrl) return;
-
-                // 3. Enviar respuesta (con media o sin ella) usando msg.from para que whatsapp-web.js sepa a dónde enviarlo
-            if (mediaUrl) {
-                try {
-                    const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
-                    await client.sendMessage(msg.from, media, { caption: text || undefined });
-                } catch (mediaErr) {
-                    console.error(`[WhatsApp ${userId}] Error enviando media:`, mediaErr.message);
-                    if (text) await client.sendMessage(msg.from, text);
-                }
-            } else {
-                await client.sendMessage(msg.from, text);
-            }
 
             // Si la consulta ya está resuelta, evitamos el conteo de inactividad
             // y dejamos el chat "abierto" de forma pasiva, sin forzar a responder.

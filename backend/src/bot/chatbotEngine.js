@@ -83,7 +83,7 @@ const buildNodeMessage = (node, includeBackOption = false) => {
     if (includeBackOption) {
       text += '\n*#.* Atrás';
     }
-    text += '\n*0.* Volver';
+    text += '\n*0.* ⬅️ Volver';
   }
 
   return text;
@@ -144,11 +144,12 @@ const processMessage = async (ownerId, chatId, userInput) => {
       const currentNode = await getNode(ownerId, currentNodeId);
       if (currentNode) {
         return { 
-          text: `${config.timeoutExtensionMsg || '✅ Entendido, tienes más tiempo.'}\n\n${buildNodeMessage(currentNode, navigationStack.length > 0)}`, 
+          // Solo enviar la confirmación sin escupir de nuevo el menú completo
+          text: config.timeoutExtensionMsg || '✅ Entendido, tienes más tiempo.', 
           mediaUrl: null, 
           mediaType: null, 
           nodeId: currentNode.id,
-          isResolved: true 
+          isResolved: false // Debe ser false para que whatsapp.js vuelva a arrancar los timers de cierre
         };
       }
     } else {
