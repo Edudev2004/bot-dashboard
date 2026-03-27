@@ -1067,8 +1067,8 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                         style={{ fontSize: "35px", fontWeight: "bold" }}
                       >
                         {Math.round(
-                          (trends.counts.resolved /
-                            (trends.counts.total || 1)) *
+                          (messages.filter((m) => m.isResolved).length /
+                            (messages.length || 1)) *
                             100,
                         )}
                         %
@@ -1082,7 +1082,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                           opacity: 0.8,
                         }}
                       >
-                        Éxito
+                        Éxito Total
                       </div>
                     </div>
                   </div>
@@ -1468,52 +1468,51 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
                     </button>
                   </div>
                 ) : (
-                  Object.entries(waDevices)
-                    .map(([id, dev]) => (
-                      <div
-                        key={id}
-                        className={`device-item ${dev.connected ? "active" : ""}`}
-                      >
-                        <div className="device-info">
-                          <div
-                            className={`device-icon ${dev.connected ? "online" : "offline"}`}
-                          >
-                            <MessageCircle size={20} />
-                          </div>
-                          <div className="device-details">
-                            <h4>WhatsApp #{id.split("_").pop().slice(-4)}</h4>
-                            <p>
-                              {dev.connected
-                                ? "Conectado y Operativo"
-                                : dev.message || "Esperando vinculación"}
-                            </p>
-                          </div>
+                  Object.entries(waDevices).map(([id, dev]) => (
+                    <div
+                      key={id}
+                      className={`device-item ${dev.connected ? "active" : ""}`}
+                    >
+                      <div className="device-info">
+                        <div
+                          className={`device-icon ${dev.connected ? "online" : "offline"}`}
+                        >
+                          <MessageCircle size={20} />
                         </div>
-                        <div className="device-actions">
-                          {dev.connected ? (
-                            <button
-                              className="btn btn-danger btn-sm"
-                              onClick={() => handleWADisconnect(id)}
-                            >
-                              Cerrar sesión
-                            </button>
-                          ) : (
-                            <button
-                              className="btn btn-outline btn-sm"
-                              onClick={() => {
-                                setActiveQrModalId(id);
-                                socket.emit("whatsapp_reset", {
-                                  userId,
-                                  instanceId: id,
-                                });
-                              }}
-                            >
-                              Generar nuevo QR
-                            </button>
-                          )}
+                        <div className="device-details">
+                          <h4>WhatsApp #{id.split("_").pop().slice(-4)}</h4>
+                          <p>
+                            {dev.connected
+                              ? "Conectado y Operativo"
+                              : dev.message || "Esperando vinculación"}
+                          </p>
                         </div>
                       </div>
-                    ))
+                      <div className="device-actions">
+                        {dev.connected ? (
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleWADisconnect(id)}
+                          >
+                            Cerrar sesión
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => {
+                              setActiveQrModalId(id);
+                              socket.emit("whatsapp_reset", {
+                                userId,
+                                instanceId: id,
+                              });
+                            }}
+                          >
+                            Generar nuevo QR
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
