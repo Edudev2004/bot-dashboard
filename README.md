@@ -87,3 +87,7 @@ Al ser un repositorio **privado**, asegúrate de:
 ---
 Desarrollado con ❤️ por [Navarro](https://github.com/Edudev2004)
 
+## Historial de Cambios
+
+Para ver el registro detallado de todas las versiones, consulta el archivo [CHANGELOG.md](./CHANGELOG.md).
+

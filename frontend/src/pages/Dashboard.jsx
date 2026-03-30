@@ -43,6 +43,8 @@ import {
   AlertTriangle,
   UserCheck,
   Zap,
+  Copy,
+  Check,
 } from "lucide-react";
 import ChatbotEditor from "./ChatbotEditor";
 import socket from "../services/socket";
@@ -175,6 +177,29 @@ const NavItem = ({ icon: Icon, label, active, onClick }) => {
   );
 };
 
+// Componente de botón para copiar al portapapeles
+const CopyButton = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button
+      className={`copy-btn ${copied ? "copied" : ""}`}
+      onClick={handleCopy}
+      title="Copiar ID"
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
+  );
+};
+
 // Componente de Badge de origen (WhatsApp / Telegram)
 const SourceBadge = ({ source }) => {
   const isWA = source === "whatsapp";
@@ -291,6 +316,7 @@ const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
                         <span className="chat-id-text">
                           {formatPhoneNumber(session.chatId)}
                         </span>
+                        <CopyButton text={session.chatId} />
                       </div>
                     </td>
                     <td className="msg-text-cell">
