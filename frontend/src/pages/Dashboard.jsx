@@ -35,6 +35,8 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
     userId,
     userRole,
     // Actions
+    switchInstance,
+    deleteBot,
     loadAdminUsers,
     toggleUserStatus,
     handleWADisconnect,
@@ -46,6 +48,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
     topNodesData,
     botEffectivenessData,
     retentionStats,
+    activeInstanceId,
   } = useDashboardData();
 
   // Build full nav items list (including admin if applicable)
@@ -84,6 +87,13 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
           lastUpdate={lastUpdate}
           theme={theme}
           toggleTheme={toggleTheme}
+          onLogout={onLogout}
+          waDevices={waDevices}
+          activeInstanceId={activeInstanceId}
+          switchInstance={switchInstance}
+          deleteBot={deleteBot}
+          handleAddDevice={handleAddDevice}
+          userRole={userRole}
         />
 
         {/* ── Views ──────────────────────────────────────────── */}

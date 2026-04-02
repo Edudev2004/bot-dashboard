@@ -4,7 +4,8 @@ import { getNodes } from "../services/chatbotApi";
 import socket from "../services/socket";
 
 export default function useDashboardData() {
-  const [messages, setMessages] = useState([]);
+  const [allMessages, setAllMessages] = useState([]);
+  const [activeInstanceId, setActiveInstanceId] = useState(localStorage.getItem("activeInstanceId") || null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(socket.connected);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -18,6 +19,12 @@ export default function useDashboardData() {
   const userId = localStorage.getItem("userId");
   const userRole = localStorage.getItem("role");
 
+  // ── Filtrado de mensajes por instancia activa ──────────────────────
+  const messages = useMemo(() => {
+    if (!activeInstanceId) return allMessages;
+    return allMessages.filter(m => (m.instanceId || "default") === activeInstanceId);
+  }, [allMessages, activeInstanceId]);
+
   // ── Carga inicial de datos ──────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
@@ -26,13 +33,26 @@ export default function useDashboardData() {
 
     Promise.all(promises)
       .then(([msgs, nodesData, usersData]) => {
-        setMessages(msgs);
+        setAllMessages(msgs);
         setNodes(nodesData);
         if (usersData) setAllUsers(usersData);
+        
+        // Si no hay instancia activa seleccionada, tomamos la primera de los mensajes o "default"
+        if (!activeInstanceId) {
+          const firstInstance = msgs.length > 0 ? (msgs[0].instanceId || "default") : "default";
+          setActiveInstanceId(firstInstance);
+          localStorage.setItem("activeInstanceId", firstInstance);
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [userRole]);
+  }, [userRole, activeInstanceId]);
+
+  // Función para cambiar de instancia
+  const switchInstance = (instanceId) => {
+    setActiveInstanceId(instanceId);
+    localStorage.setItem("activeInstanceId", instanceId);
+  };
 
   // ── Admin helpers ───────────────────────────────────────────────────
   const loadAdminUsers = async () => {
@@ -70,7 +90,7 @@ export default function useDashboardData() {
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     const onNew = (msg) => {
-      setMessages((prev) => [msg, ...prev]);
+      setAllMessages((prev) => [msg, ...prev]);
       setLastUpdate(new Date().toLocaleTimeString("es-MX"));
     };
 
@@ -140,7 +160,29 @@ export default function useDashboardData() {
     socket.emit("whatsapp_add_instance", userId);
   };
 
-  // ── Datos derivados (cálculos) ──────────────────────────────────────
+  const deleteBot = (instanceId) => {
+    // Emitir borrado definitivo al backend
+    socket.emit("whatsapp_delete_bot", { userId, instanceId });
+    
+    // Limpieza local inmediata
+    setAllMessages(prev => prev.filter(m => (m.instanceId || "default") !== instanceId));
+    setWaDevices(prev => {
+      const next = { ...prev };
+      delete next[instanceId];
+      return next;
+    });
+
+    // Si el bot borrado era el activo, cambiar al siguiente disponible o null
+    if (activeInstanceId === instanceId) {
+      const remainingIds = Object.keys(waDevices).filter(id => id !== instanceId);
+      const nextId = remainingIds.length > 0 ? remainingIds[0] : null;
+      setActiveInstanceId(nextId);
+      if (nextId) localStorage.setItem("activeInstanceId", nextId);
+      else localStorage.removeItem("activeInstanceId");
+    }
+  };
+
+  // ── Datos derivados (cálculos sobre los mensajes filtrados) ────────
   const uniqueUsers = useMemo(() => {
     const usersMap = new Map();
     messages.forEach((msg) => {
@@ -312,6 +354,7 @@ export default function useDashboardData() {
   return {
     // State
     messages,
+    activeInstanceId,
     loading,
     connected,
     lastUpdate,
@@ -325,6 +368,8 @@ export default function useDashboardData() {
     userId,
     userRole,
     // Actions
+    switchInstance,
+    deleteBot,
     loadAdminUsers,
     toggleUserStatus,
     handleWADisconnect,

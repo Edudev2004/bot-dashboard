@@ -1,5 +1,6 @@
 import React from "react";
 import { Wifi, WifiOff, RefreshCw, Sun, Moon } from "lucide-react";
+import UserDropdown from "./UserDropdown";
 
 const TopHeader = ({
   activeNav,
@@ -8,6 +9,13 @@ const TopHeader = ({
   lastUpdate,
   theme,
   toggleTheme,
+  onLogout,
+  waDevices,
+  activeInstanceId,
+  switchInstance,
+  deleteBot,
+  handleAddDevice,
+  userRole,
 }) => {
   return (
     <header className="top-header">
@@ -48,10 +56,17 @@ const TopHeader = ({
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        {/* Avatar de usuario */}
-        <div className="user-avatar" title="Sesión de Usuario">
-          BD
-        </div>
+        {/* Avatar de usuario con Dropdown */}
+        <UserDropdown
+          theme={theme}
+          onLogout={onLogout}
+          waDevices={waDevices}
+          activeInstanceId={activeInstanceId}
+          switchInstance={switchInstance}
+          deleteBot={deleteBot}
+          handleAddDevice={handleAddDevice}
+          userRole={userRole}
+        />
       </div>
     </header>
   );
