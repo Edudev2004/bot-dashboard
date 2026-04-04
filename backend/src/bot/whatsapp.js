@@ -261,29 +261,49 @@ const setupWhatsAppSockets = () => {
             
             // Cargar instancias desde Firestore al reconectar el socket
             const savedInstances = await getInstances(userId);
-            for (const id of savedInstances) {
+            for (const inst of savedInstances) {
+                const id = inst.id;
                 if (!bots.has(id)) {
                     await initBotForUser(userId, id);
                 }
             }
 
-            // Enviar estados de todas las instancias del usuario
-            const instances = userInstances.get(userId) || [];
-            instances.forEach(id => {
-                const b = bots.get(id);
-                if (b && b.client) {
-                    socket.emit('whatsapp_status_update', { 
-                        instanceId: id, 
-                        connected: b.client.info ? true : false 
-                    });
-                }
+            // Enviar estados de todas las instancias del usuario (incluyendo nombres)
+            const dbInstances = await getInstances(userId);
+            dbInstances.forEach(inst => {
+                const b = bots.get(inst.id);
+                socket.emit('whatsapp_status_update', { 
+                    instanceId: inst.id, 
+                    name: inst.name,
+                    connected: (b && b.client && b.client.info) ? true : false 
+                });
             });
         });
 
         socket.on('whatsapp_add_instance', async (userId) => {
             const newId = `client_${userId}_${Date.now()}`;
+            const defaultName = `Nuevo Bot ${Date.now().toString().slice(-4)}`;
             console.log(`[Socket] Agregando nueva instancia para ${userId}: ${newId}`);
+            
+            // Guardar en DB con nombre inicial
+            const { saveInstance } = require('../services/firestoreService');
+            await saveInstance(userId, newId, defaultName);
+            
             initBotForUser(userId, newId);
+        });
+
+        socket.on('whatsapp_rename_instance', async ({ userId, instanceId, newName }) => {
+            console.log(`[Socket] Renombrando instancia ${instanceId} a: ${newName}`);
+            const { updateInstanceName } = require('../services/firestoreService');
+            await updateInstanceName(userId, instanceId, newName);
+            
+            // Avisar a todos los dispositivos del usuario del cambio de nombre
+            const b = bots.get(instanceId);
+            getIO().to(`user_${userId}`).emit('whatsapp_status_update', { 
+                instanceId, 
+                name: newName,
+                connected: (b && b.client && b.client.info) ? true : false 
+            });
         });
 
         socket.on('whatsapp_logout', async ({ userId, instanceId }) => {

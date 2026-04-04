@@ -33,9 +33,11 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
     allUsers,
     adminLoading,
     userId,
+    userName,
     userRole,
     // Actions
     switchInstance,
+    renameBot,
     deleteBot,
     loadAdminUsers,
     toggleUserStatus,
@@ -91,8 +93,10 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
           waDevices={waDevices}
           activeInstanceId={activeInstanceId}
           switchInstance={switchInstance}
+          renameBot={renameBot}
           deleteBot={deleteBot}
           handleAddDevice={handleAddDevice}
+          userName={userName}
           userRole={userRole}
         />
 

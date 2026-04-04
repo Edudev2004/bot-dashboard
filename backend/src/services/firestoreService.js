@@ -106,25 +106,58 @@ const setBotConfig = async (ownerId, config) => {
  */
 const getInstances = async (ownerId) => {
   const doc = await db.collection('bot_instances').doc(ownerId).get();
-  return doc.exists ? doc.data().instances || [] : [];
+  if (!doc.exists) return [];
+  
+  const rawInstances = doc.data().instances || [];
+  // Normalizar: Si el elemento es string, convertir a objeto con nombre por defecto
+  return rawInstances.map(inst => {
+    if (typeof inst === 'string') {
+      return { id: inst, name: `Bot #${inst.split('_').pop().slice(-4)}` };
+    }
+    return inst; // Ya es objeto { id, name }
+  });
 };
 
-const saveInstance = async (ownerId, instanceId) => {
+const saveInstance = async (ownerId, instanceId, name = null) => {
+  const instances = await getInstances(ownerId);
+  
+  // Si ya existe, no hacemos nada (o podríamos actualizar el nombre si se pasa)
+  const existing = instances.find(inst => inst.id === instanceId);
+  if (existing) return;
+
+  const newInstance = { 
+    id: instanceId, 
+    name: name || `Bot #${instanceId.split('_').pop().slice(-4)}` 
+  };
+  
   const admin = require('firebase-admin');
   await db.collection('bot_instances').doc(ownerId).set({
-    instances: admin.firestore.FieldValue.arrayUnion(instanceId),
+    instances: admin.firestore.FieldValue.arrayUnion(newInstance),
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+};
+
+const updateInstanceName = async (ownerId, instanceId, newName) => {
+  const instances = await getInstances(ownerId);
+  const updatedInstances = instances.map(inst => 
+    inst.id === instanceId ? { ...inst, name: newName } : inst
+  );
+
+  await db.collection('bot_instances').doc(ownerId).set({
+    instances: updatedInstances,
     updatedAt: new Date().toISOString()
   }, { merge: true });
 };
 
 const deleteInstance = async (ownerId, instanceId) => {
-  const admin = require('firebase-admin');
+  const instances = await getInstances(ownerId);
+  const filteredInstances = instances.filter(inst => inst.id !== instanceId);
+
   await db.collection('bot_instances').doc(ownerId).set({
-    instances: admin.firestore.FieldValue.arrayRemove(instanceId),
+    instances: filteredInstances,
     updatedAt: new Date().toISOString()
   }, { merge: true });
 };
-
 
 module.exports = { 
     saveMessage, 
@@ -136,6 +169,7 @@ module.exports = {
     clearSession,
     getInstances,
     saveInstance,
+    updateInstanceName,
     deleteInstance,
     storage
 };

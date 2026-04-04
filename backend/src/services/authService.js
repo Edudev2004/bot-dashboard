@@ -52,6 +52,16 @@ const createUser = async (userData) => {
 
   const docRef = await db.collection('users').add(newUser);
 
+  // --- AUTOMATIZACIÓN: Crear el primer bot por defecto ---
+  try {
+    const { saveInstance } = require('./firestoreService');
+    const defaultInstanceId = `client_${docRef.id}_${Date.now()}`;
+    await saveInstance(docRef.id, defaultInstanceId, "Mi primer Bot");
+    console.log(`[Auth] Bot inicial creado para el usuario ${docRef.id}`);
+  } catch (err) {
+    console.error(`[Auth] Error al crear bot inicial:`, err.message);
+  }
+
   return { id: docRef.id, username, email, role, isActive: true };
 };
 

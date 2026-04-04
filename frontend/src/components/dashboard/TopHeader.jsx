@@ -13,8 +13,10 @@ const TopHeader = ({
   waDevices,
   activeInstanceId,
   switchInstance,
+  renameBot,
   deleteBot,
   handleAddDevice,
+  userName,
   userRole,
 }) => {
   return (
@@ -63,8 +65,10 @@ const TopHeader = ({
           waDevices={waDevices}
           activeInstanceId={activeInstanceId}
           switchInstance={switchInstance}
+          renameBot={renameBot}
           deleteBot={deleteBot}
           handleAddDevice={handleAddDevice}
+          username={userName}
           userRole={userRole}
         />
       </div>

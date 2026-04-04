@@ -18,12 +18,25 @@ export default function useDashboardData() {
 
   const userId = localStorage.getItem("userId");
   const userRole = localStorage.getItem("role");
+  const userName = localStorage.getItem("user") || "Usuario";
 
   // ── Filtrado de mensajes por instancia activa ──────────────────────
   const messages = useMemo(() => {
     if (!activeInstanceId) return allMessages;
     return allMessages.filter(m => (m.instanceId || "default") === activeInstanceId);
   }, [allMessages, activeInstanceId]);
+
+  // ── Auto-selección inicial ──────────────────────────────────────────
+  useEffect(() => {
+    // Si no hay instancia activa pero ya tenemos dispositivos cargados, tomamos el primero
+    const deviceIds = Object.keys(waDevices);
+    if (!activeInstanceId && deviceIds.length > 0) {
+      const firstId = deviceIds[0];
+      console.log(`[Dashboard] Auto-seleccionando instancia: ${firstId}`);
+      setActiveInstanceId(firstId);
+      localStorage.setItem("activeInstanceId", firstId);
+    }
+  }, [waDevices, activeInstanceId]);
 
   // ── Carga inicial de datos ──────────────────────────────────────────
   useEffect(() => {
@@ -36,17 +49,10 @@ export default function useDashboardData() {
         setAllMessages(msgs);
         setNodes(nodesData);
         if (usersData) setAllUsers(usersData);
-        
-        // Si no hay instancia activa seleccionada, tomamos la primera de los mensajes o "default"
-        if (!activeInstanceId) {
-          const firstInstance = msgs.length > 0 ? (msgs[0].instanceId || "default") : "default";
-          setActiveInstanceId(firstInstance);
-          localStorage.setItem("activeInstanceId", firstInstance);
-        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [userRole, activeInstanceId]);
+  }, [userRole]);
 
   // Función para cambiar de instancia
   const switchInstance = (instanceId) => {
@@ -108,24 +114,25 @@ export default function useDashboardData() {
       });
     };
 
-    const onWA_Status = (update) => {
-      const { instanceId, connected, message, removed } = update;
-      setWaDevices((prev) => {
-        if (removed) {
+    const onWA_Status = ({ instanceId, name, connected, message, removed }) => {
+      if (removed) {
+        setWaDevices(prev => {
           const next = { ...prev };
           delete next[instanceId];
           return next;
-        }
-        return {
-          ...prev,
-          [instanceId]: {
-            ...(prev[instanceId] || {}),
-            connected,
-            message: message || "",
-            qr: connected ? null : prev[instanceId]?.qr || null,
-          },
-        };
-      });
+        });
+        return;
+      }
+      setWaDevices(prev => ({
+        ...prev,
+        [instanceId]: {
+          ...prev[instanceId],
+          name: name || prev[instanceId]?.name || `Bot #${instanceId.split('_').pop().slice(-4)}`,
+          connected,
+          statusMessage: message,
+          qr: connected ? null : prev[instanceId]?.qr || null,
+        },
+      }));
     };
 
     socket.on("connect", onConnect);
@@ -158,6 +165,10 @@ export default function useDashboardData() {
   const handleAddDevice = () => {
     setIsLinking(true);
     socket.emit("whatsapp_add_instance", userId);
+  };
+
+  const renameBot = (instanceId, newName) => {
+    socket.emit("whatsapp_rename_instance", { userId, instanceId, newName });
   };
 
   const deleteBot = (instanceId) => {
@@ -366,9 +377,11 @@ export default function useDashboardData() {
     allUsers,
     adminLoading,
     userId,
+    userName,
     userRole,
     // Actions
     switchInstance,
+    renameBot,
     deleteBot,
     loadAdminUsers,
     toggleUserStatus,
