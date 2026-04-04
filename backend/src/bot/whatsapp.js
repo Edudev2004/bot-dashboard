@@ -331,9 +331,25 @@ const setupWhatsAppSockets = () => {
                     if (b.client.info) {
                         await b.client.logout().catch(() => {}); 
                     }
-                    // 2. Destruimos el cliente (Cerramos Puppeteer/Chrome)
+                    // 2. Extraer el proceso padre del navegador (Puppeteer) para matarlo a nivel de Sistema Operativo
+                    let browserProc = null;
+                    if (b.client.pupBrowser && b.client.pupBrowser.process) {
+                        browserProc = b.client.pupBrowser.process();
+                    }
+
+                    // 3. Destruimos el cliente (Cerramos Puppeteer/Chrome vía webSocket)
                     await b.client.destroy().catch(() => {});
-                    // Pequeña espera para liberar archivos en Windows
+                    
+                    // 4. Force KILL al proceso zombi si quedó colgado
+                    if (browserProc && browserProc.pid) {
+                        try {
+                            process.kill(browserProc.pid, 'SIGKILL'); // Falla silenciosa si ya estaba muerto
+                        } catch (e) {
+                            // Ignorar (es normal si destroy() lo cerró bien)
+                        }
+                    }
+
+                    // Pequeña espera para asegurar que el SO liberó los candados de disco en Windows
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             } catch (err) {
