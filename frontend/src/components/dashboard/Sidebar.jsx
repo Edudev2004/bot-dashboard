@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   UserCheck,
+  Calendar,
 } from "lucide-react";
 import NavItem from "./NavItem";
 import arboraBlack from "../../assets/ARBORA-BLACK.png";
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { id: "messages", icon: MessageSquare, label: "Mensajes" },
   { id: "pedidos", icon: ShoppingCart, label: "Pedidos" },
+  { id: "calendario", icon: Calendar, label: "Calendario" },
   { id: "botconfig", icon: Bot, label: "Bot Config" },
   { id: "usuarios", icon: Users, label: "Usuarios" },
 ];

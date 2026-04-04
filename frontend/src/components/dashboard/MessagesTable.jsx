@@ -5,7 +5,7 @@ import SourceBadge from "./SourceBadge";
 import CopyButton from "./CopyButton";
 import { formatDate, formatPhoneNumber, getInitials } from "../../utils/formatters";
 
-const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
+const MessagesTable = ({ messages, loading, title, subtitle, isDashboard, waDevices = {} }) => {
   const [expandedSessionId, setExpandedSessionId] = useState(null);
 
   // Agrupar mensajes en Sesiones usando el sessionId
@@ -14,10 +14,15 @@ const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
     messages.forEach((msg) => {
       const sid = msg.sessionId || `session_legacy_${msg.chatId}`;
       if (!grouped[sid]) {
+        // Encontrar el nombre del bot si existe el instanceId
+        const botName = msg.instanceId ? (waDevices[msg.instanceId]?.name || "Desconocido") : "Sin Bot Activo";
+
         grouped[sid] = {
           id: sid,
           chatId: msg.chatId,
           source: msg.source,
+          botName, // Guardamos el nombre para mostrarlo
+          contactName: msg.contactName, // Guardamos el nombre del contacto
           messages: [],
           startDate: msg.date,
           lastDate: msg.date,
@@ -42,7 +47,7 @@ const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
     return Object.values(grouped).sort(
       (a, b) => new Date(b.lastDate) - new Date(a.lastDate),
     );
-  }, [messages]);
+  }, [messages, waDevices]);
 
   const toggleExpand = (sid) => {
     setExpandedSessionId((prev) => (prev === sid ? null : sid));
@@ -99,15 +104,25 @@ const MessagesTable = ({ messages, loading, title, subtitle, isDashboard }) => {
                     <td>
                       <div className="user-cell">
                         <div className="table-avatar">
-                          {getInitials(session.chatId)}
+                          {getInitials(session.contactName || session.chatId)}
                         </div>
-                        <span className="chat-id-text">
-                          {formatPhoneNumber(session.chatId)}
-                        </span>
+                        <div className="user-info-stack">
+                          <span className="chat-id-text">
+                            {session.contactName || formatPhoneNumber(session.chatId)}
+                          </span>
+                          {session.contactName && (
+                            <span className="chat-id-subtext">
+                              {formatPhoneNumber(session.chatId)}
+                            </span>
+                          )}
+                        </div>
                         <CopyButton text={session.chatId} />
                       </div>
                     </td>
                     <td className="msg-text-cell">
+                      <div className="bot-origin-indicator">
+                        <span className="bot-name-mini">{session.botName}</span>
+                      </div>
                       <strong style={{ color: "var(--text-main)" }}>
                         {session.messages.length} mensaje(s)
                       </strong>{" "}

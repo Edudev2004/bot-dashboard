@@ -9,6 +9,7 @@ import {
   BarElement,
   LineElement,
   PointElement,
+  Filler,
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import {
@@ -35,6 +36,7 @@ ChartJS.register(
   BarElement,
   LineElement,
   PointElement,
+  Filler,
 );
 
 const OverviewView = ({
@@ -46,6 +48,7 @@ const OverviewView = ({
   botEffectivenessData,
   retentionStats,
   theme,
+  waDevices,
 }) => {
   return (
     <div className="dashboard-content">
@@ -406,6 +409,7 @@ const OverviewView = ({
         title="Actividad Reciente"
         subtitle="Últimas interacciones captadas por el bot"
         isDashboard={true}
+        waDevices={waDevices}
       />
     </div>
   );

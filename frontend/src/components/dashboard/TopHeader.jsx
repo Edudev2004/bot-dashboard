@@ -18,6 +18,7 @@ const TopHeader = ({
   handleAddDevice,
   userName,
   userRole,
+  setActiveQrModalId,
 }) => {
   return (
     <header className="top-header">
@@ -70,6 +71,7 @@ const TopHeader = ({
           handleAddDevice={handleAddDevice}
           username={userName}
           userRole={userRole}
+          setActiveQrModalId={setActiveQrModalId}
         />
       </div>
     </header>

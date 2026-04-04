@@ -13,6 +13,8 @@ import OverviewView from "./dashboard/views/OverviewView";
 import UsersView from "./dashboard/views/UsersView";
 import AdminView from "./dashboard/views/AdminView";
 import SettingsView from "./dashboard/views/SettingsView";
+import OrdersView from "./dashboard/views/OrdersView";
+import CalendarView from "./dashboard/views/CalendarView";
 
 // Page components
 import ChatbotEditor from "./ChatbotEditor";
@@ -35,10 +37,15 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
     userId,
     userName,
     userRole,
+    orders,
+    ordersLoading,
     // Actions
     switchInstance,
     renameBot,
     deleteBot,
+    addOrder,
+    updateOrderStatus,
+    deleteOrder,
     loadAdminUsers,
     toggleUserStatus,
     handleWADisconnect,
@@ -98,6 +105,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
           handleAddDevice={handleAddDevice}
           userName={userName}
           userRole={userRole}
+          setActiveQrModalId={setActiveQrModalId}
         />
 
         {/* ── Views ──────────────────────────────────────────── */}
@@ -112,6 +120,7 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
             botEffectivenessData={botEffectivenessData}
             retentionStats={retentionStats}
             theme={theme}
+            waDevices={waDevices}
           />
         )}
 
@@ -122,7 +131,22 @@ export default function Dashboard({ theme, toggleTheme, onLogout }) {
             title="Historial de Mensajes"
             subtitle="Todos los registros almacenados en la base de datos"
             isDashboard={false}
+            waDevices={waDevices}
           />
+        )}
+
+        {activeNav === "pedidos" && (
+          <OrdersView 
+            orders={orders} 
+            loading={ordersLoading} 
+            addOrder={addOrder} 
+            updateOrderStatus={updateOrderStatus}
+            deleteOrder={deleteOrder} 
+          />
+        )}
+
+        {activeNav === "calendario" && (
+          <CalendarView orders={orders} theme={theme} />
         )}
 
         {activeNav === "botconfig" && <ChatbotEditor />}

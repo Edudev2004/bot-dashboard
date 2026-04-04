@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   Edit2,
-  X
+  X,
+  QrCode
 } from "lucide-react";
 
 const UserDropdown = ({ 
@@ -23,7 +24,8 @@ const UserDropdown = ({
   deleteBot,
   handleAddDevice,
   username,
-  userRole 
+  userRole,
+  setActiveQrModalId
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -151,6 +153,19 @@ const UserDropdown = ({
                           )}
                           
                           <div className="instance-actions">
+                            {!dev.connected && dev.qr && (
+                              <button 
+                                className="qr-view-btn" 
+                                title="Ver código QR"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveQrModalId(id);
+                                  setIsOpen(false);
+                                }}
+                              >
+                                <QrCode size={12} />
+                              </button>
+                            )}
                             {editingId !== id && (
                               <button 
                                 className="edit-name-btn" 
