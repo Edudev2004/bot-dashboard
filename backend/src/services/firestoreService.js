@@ -159,6 +159,37 @@ const deleteInstance = async (ownerId, instanceId) => {
   }, { merge: true });
 };
 
+/**
+ * --- PEDIDOS (Orders) ---
+ */
+const getOrdersByOwner = async (ownerId) => {
+  const snapshot = await db.collection('orders')
+    .where('ownerId', '==', ownerId)
+    .get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    .sort((a,b) => new Date(b.entryDate) - new Date(a.entryDate));
+};
+
+const saveOrder = async (ownerId, orderData) => {
+  const docRef = await db.collection('orders').add({
+    ...orderData,
+    ownerId,
+    createdAt: new Date().toISOString()
+  });
+  return { id: docRef.id, ...orderData };
+};
+
+const updateOrder = async (orderId, orderData) => {
+  await db.collection('orders').doc(orderId).update({
+    ...orderData,
+    updatedAt: new Date().toISOString()
+  });
+};
+
+const deleteOrder = async (orderId) => {
+  await db.collection('orders').doc(orderId).delete();
+};
+
 module.exports = { 
     saveMessage, 
     getMessagesByOwner, 
@@ -171,5 +202,9 @@ module.exports = {
     saveInstance,
     updateInstanceName,
     deleteInstance,
+    getOrdersByOwner,
+    saveOrder,
+    updateOrder,
+    deleteOrder,
     storage
 };

@@ -87,8 +87,9 @@ const initBotForUser = async (userId, instanceId = null) => {
         const date    = new Date().toISOString();
 
         try {
-            // Obtener el número de forma directa e instantánea para evitar de 5 a 7 segundos de retraso
-            const contactNumber = msg.from.split('@')[0];
+            // Limpiar el ID de WhatsApp: quitar sufijo de dispositivo vinculado (ej: 521234:1 -> 521234)
+            const rawId = msg.from.split('@')[0].split(':')[0];
+            const contactNumber = rawId;
 
             const queueKey = `${userId}_${contactNumber}`;
 
@@ -102,11 +103,17 @@ const initBotForUser = async (userId, instanceId = null) => {
                     userTimers.delete(queueKey);
                 }
 
-                console.log(`[WhatsApp ${actualInstanceId}] Mensaje de ${contactNumber}: ${body.slice(0, 20)}...`);
+                // Obtener info del contacto (Nombre y número normalizado via WhatsApp)
+                const contact = await msg.getContact().catch(() => null);
+                // contact.number es el número internacional sin el ':X' de dispositivos
+                const realNumber = contact?.number || contactNumber;
+                const contactName = contact?.pushname || contact?.name || null;
+
+                // Log de depuración: ver exactamente qué envía WhatsApp
+                console.log(`[WhatsApp ${actualInstanceId}] from_raw='${msg.from}' | contact.number='${contact?.number}' | finalNumber='${realNumber}' | name='${contactName}' | text='${body.slice(0, 30)}'`);
 
                 // 1. Procesar con el motor del chatbot ANTES de guardar el mensaje
-                // para saber a qué nodo llegó el usuario con esa interacción
-                const botResponse = await processMessage(userId, contactNumber, body);
+                const botResponse = await processMessage(userId, realNumber, body);
                 const { 
                     text, 
                     mediaUrl, 
@@ -119,8 +126,7 @@ const initBotForUser = async (userId, instanceId = null) => {
                     isWarning 
                 } = botResponse;
 
-                // 🚀 OPTIMIZACIÓN EXTREMA: Enviar la respuesta a WhatsApp INMEDIATAMENTE
-                // Esto ocurre ANTES de preguntar a la base de datos por sesiones o guardar logs.
+                // ... (Fast reply logic remains the same) ...
                 if (!ignored && (text || mediaUrl)) {
                     const sendFastReply = async () => {
                         if (mediaUrl) {
@@ -135,23 +141,23 @@ const initBotForUser = async (userId, instanceId = null) => {
                             await client.sendMessage(msg.from, text);
                         }
                     };
-                    
-                    // Disparamos en segundo plano (Fire-and-forget) para que el chat responda en <1 segundo
                     sendFastReply().catch(e => console.error("Error al enviar respuesta rápida:", e));
                 }
 
                 // Capturar sessionId para el empaquetado de hilos en el Dashboard
-                const currentSession = await getSession(userId, contactNumber);
+                const currentSession = await getSession(userId, realNumber);
                 const currentSessionId = currentSession ? currentSession.sessionId : `sess_${Date.now()}`;
 
                 const logData = {
                     sessionId: currentSessionId,
-                    chatId: contactNumber, // Usamos el número limpio para el dashboard
+                    chatId: realNumber, // Número normalizado
+                    contactName, // Guardamos el nombre para el dashboard
                     text: body,
                     type: detectType(body.toLowerCase()),
                     date,
                     source: 'whatsapp',
                     ownerId: userId,
+                    instanceId: actualInstanceId,
                     nodeId,
                     isResolved,
                     isFallback,
@@ -160,7 +166,6 @@ const initBotForUser = async (userId, instanceId = null) => {
                 };
 
                 if (ignored) {
-                    // Si el motor aplicó silencio inteligente por spam, guardamos asíncrono y abortamos
                     saveMessage(logData).then(s => getIO().to(`user_${userId}`).emit('new_message', s)).catch(e => null);
                     return;
                 }
@@ -288,6 +293,14 @@ const setupWhatsAppSockets = () => {
             // Guardar en DB con nombre inicial
             const { saveInstance } = require('../services/firestoreService');
             await saveInstance(userId, newId, defaultName);
+
+            // Informar inmediatamente al frontend para evitar que el usuario vuelva a clickear
+            getIO().to(`user_${userId}`).emit('whatsapp_status_update', { 
+                instanceId: newId, 
+                name: defaultName,
+                connected: false,
+                message: 'Iniciando WhatsApp...' 
+            });
             
             initBotForUser(userId, newId);
         });

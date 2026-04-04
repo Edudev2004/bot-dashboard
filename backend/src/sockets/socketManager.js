@@ -8,7 +8,7 @@ let io;
 const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: 'http://localhost:5173', // Permitimos conexión desde el frontend de Vite
+      origin: "*", // Permitir cualquier puerto local (Vite a veces salta a 5174 o 5175)
       methods: ['GET', 'POST'],
     },
   });

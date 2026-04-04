@@ -8,7 +8,16 @@ const path    = require('path');
 const fs      = require('fs');
 
 const { initSocket }          = require('./sockets/socketManager');
-const { getMessagesByOwner, getBotConfig, setBotConfig, storage } = require('./services/firestoreService');
+const { 
+  getMessagesByOwner, 
+  getBotConfig, 
+  setBotConfig, 
+  storage,
+  getOrdersByOwner,
+  saveOrder,
+  updateOrder,
+  deleteOrder
+} = require('./services/firestoreService');
 const { findUserByUsername, createUser, verifyPassword, getAllUsers, updateUserStatus }          = require('./services/authService');
 const { initBotForUser, setupWhatsAppSockets, updateBotConfigCache, stopAllBotsForUser } = require('./bot/whatsapp');
 const {
@@ -20,6 +29,7 @@ const {
 } = require('./services/chatbotService');
 
 const app    = express();
+
 const PORT   = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -41,7 +51,14 @@ const storageLocal = multer.diskStorage({
 const upload = multer({ storage: storageLocal });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: function(origin, callback) {
+    // Permitir localhost en cualquier puerto durante desarrollo
+    if (!origin || origin.match(/^http:\/\/localhost:\d+$/)) {
+        callback(null, true);
+    } else {
+        callback(new Error('CORS no permitido'));
+    }
+}}));
 app.use(express.json());
 // Servir archivos estáticos de la carpeta public
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
@@ -139,6 +156,43 @@ app.post('/api/login', async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ error: 'Error en el servidor' });
+    }
+});
+
+// ─── PEDIDOS (Orders) ─────────────────────────────────────────────────────────
+app.get('/api/orders', authenticateToken, async (req, res) => {
+    try {
+        const orders = await getOrdersByOwner(req.user.id);
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/orders', authenticateToken, async (req, res) => {
+    try {
+        const newOrder = await saveOrder(req.user.id, req.body);
+        res.status(201).json(newOrder);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.patch('/api/orders/:id', authenticateToken, async (req, res) => {
+    try {
+        await updateOrder(req.params.id, req.body);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/orders/:id', authenticateToken, async (req, res) => {
+    try {
+        await deleteOrder(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
