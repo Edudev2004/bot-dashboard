@@ -1,3 +1,10 @@
+# WhatsApp sessions (Local cache & Auth)
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Node
 node_modules/
 .env
 dist/

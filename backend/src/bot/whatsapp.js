@@ -319,34 +319,54 @@ const setupWhatsAppSockets = () => {
             });
         });
 
-        socket.on('whatsapp_logout', async ({ userId, instanceId }) => {
+        socket.on('whatsapp_delete_bot', async ({ userId, instanceId }) => {
             const actualId = instanceId || `default_${userId}`;
             const b = bots.get(actualId);
             
-            console.log(`[Socket] Solicitud de logout para instancia: ${actualId}`);
+            console.log(`[Socket] Solicitud de ELIMINACIÓN DEFINITIVA para instancia: ${actualId}`);
             
             try {
                 if (b) {
-                    // Solo intentamos logout si parece estar autenticado (tiene info)
+                    // 1. Intentamos logout elegante si está conectado
                     if (b.client.info) {
                         await b.client.logout().catch(() => {}); 
                     }
+                    // 2. Destruimos el cliente (Cerramos Puppeteer/Chrome)
                     await b.client.destroy().catch(() => {});
+                    // Pequeña espera para liberar archivos en Windows
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             } catch (err) {
-                console.error(`[WhatsApp ${actualId}] Error durante destrucción en logout:`, err.message);
+                console.error(`[WhatsApp ${actualId}] Error en destrucción de bot:`, err.message);
             } finally {
-                // SIEMPRE limpiar mapas y avisar al frontal, esté o no el bot vivo
+                // 3. Limpieza física forzada del disco duro
+                try {
+                    const sessionPath = path.join(__dirname, `../../.wwebjs_auth/session-${actualId}`);
+                    if (fs.existsSync(sessionPath)) {
+                        fs.rmSync(sessionPath, { recursive: true, force: true });
+                        console.log(`[Bot Manager] 🧹 Carpeta física de sesión borrada: ${actualId}`);
+                    }
+                } catch (rmErr) {
+                    console.error(`[Bot Manager] ⚠️ No se pudo borrar físicamente la carpeta ${actualId}:`, rmErr.message);
+                }
+
+                // 4. Limpieza de memoria y base de datos
                 bots.delete(actualId);
-                userInstances.get(userId)?.delete(actualId);
+                const userInst = userInstances.get(userId);
+                if (userInst) userInst.delete(actualId);
+                
                 await deleteInstance(userId, actualId).catch(() => {});
                 
+                // 5. Notificar a la interfaz
                 getIO().to(`user_${userId}`).emit('whatsapp_status_update', { 
                     instanceId: actualId, 
                     removed: true 
                 });
             }
         });
+
+        // Mantenemos logout como alias por si acaso
+        socket.on('whatsapp_logout', (data) => socket.emit('whatsapp_delete_bot', data));
 
         socket.on('whatsapp_reset', async ({ userId, instanceId }) => {
             const actualId = instanceId || `default_${userId}`;
