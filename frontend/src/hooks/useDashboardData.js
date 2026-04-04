@@ -15,6 +15,8 @@ export default function useDashboardData() {
   const [nodes, setNodes] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
 
   const userId = localStorage.getItem("userId");
   const userRole = localStorage.getItem("role");
@@ -22,33 +24,119 @@ export default function useDashboardData() {
 
   // ── Filtrado de mensajes por instancia activa ──────────────────────
   const messages = useMemo(() => {
+    const deviceIds = Object.keys(waDevices);
+    
+    // Si no hay bot seleccionado AND existen bots, devolvemos vacío para forzar selección
+    if (!activeInstanceId && deviceIds.length > 0) return [];
+    
+    // Si no hay bot seleccionado AND no hay bots registrados, mostramos todo (legacy/default)
     if (!activeInstanceId) return allMessages;
+
+    // Filtrado estricto por instancia
     return allMessages.filter(m => (m.instanceId || "default") === activeInstanceId);
-  }, [allMessages, activeInstanceId]);
+  }, [allMessages, activeInstanceId, waDevices]);
 
   // ── Auto-selección inicial ──────────────────────────────────────────
   useEffect(() => {
-    // Si no hay instancia activa pero ya tenemos dispositivos cargados, tomamos el primero
     const deviceIds = Object.keys(waDevices);
     if (!activeInstanceId && deviceIds.length > 0) {
       const firstId = deviceIds[0];
-      console.log(`[Dashboard] Auto-seleccionando instancia: ${firstId}`);
       setActiveInstanceId(firstId);
       localStorage.setItem("activeInstanceId", firstId);
     }
   }, [waDevices, activeInstanceId]);
 
+  const fetchOrders = async () => {
+    setOrdersLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"}/api/orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setOrders(data);
+      }
+    } catch (err) {
+      console.error("[Orders] Error fetching:", err);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const addOrder = async (orderData) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"}/api/orders`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          ...orderData,
+          entryDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+          status: "Pendiente"
+        })
+      });
+      if (response.ok) {
+        const newOrder = await response.json();
+        setOrders(prev => [newOrder, ...prev]);
+        return true;
+      }
+    } catch (err) {
+      console.error("[Orders] Error saving:", err);
+    }
+    return false;
+  };
+
+  const updateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"}/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (response.ok) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+      }
+    } catch (err) {
+      console.error("[Orders] Error updating status:", err);
+    }
+  };
+
+  const deleteOrderAction = async (orderId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000"}/api/orders/${orderId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setOrders(prev => prev.filter(o => o.id !== orderId));
+      }
+    } catch (err) {
+      console.error("[Orders] Error deleting:", err);
+    }
+  };
+
   // ── Carga inicial de datos ──────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
-    const promises = [fetchMessages(), getNodes()];
+    const promises = [fetchMessages(), getNodes(), fetchOrders()];
     if (userRole === "administrator") promises.push(adminFetchUsers());
 
     Promise.all(promises)
-      .then(([msgs, nodesData, usersData]) => {
+      .then(([msgs, nodesData, , usersData]) => {
         setAllMessages(msgs);
         setNodes(nodesData);
         if (usersData) setAllUsers(usersData);
+        // Note: fetchOrders setOrders internally, so no need to handle it in Promise.all if it's already done.
+        // But for consistency I'll adjust.
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -93,8 +181,15 @@ export default function useDashboardData() {
       socket.emit("join_private", userId);
     }
 
-    const onConnect = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
+    const onConnect = () => {
+      console.log("[Socket] Hook: Connected");
+      setConnected(true);
+    };
+    const onDisconnect = () => {
+      console.log("[Socket] Hook: Disconnected");
+      setConnected(false);
+    };
+    
     const onNew = (msg) => {
       setAllMessages((prev) => [msg, ...prev]);
       setLastUpdate(new Date().toLocaleTimeString("es-MX"));
@@ -134,6 +229,10 @@ export default function useDashboardData() {
         },
       }));
     };
+
+    if (socket.connected) {
+      setConnected(true);
+    }
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -376,6 +475,8 @@ export default function useDashboardData() {
     nodes,
     allUsers,
     adminLoading,
+    orders,
+    ordersLoading,
     userId,
     userName,
     userRole,
@@ -383,6 +484,9 @@ export default function useDashboardData() {
     switchInstance,
     renameBot,
     deleteBot,
+    addOrder,
+    updateOrderStatus,
+    deleteOrder: deleteOrderAction,
     loadAdminUsers,
     toggleUserStatus,
     handleWADisconnect,

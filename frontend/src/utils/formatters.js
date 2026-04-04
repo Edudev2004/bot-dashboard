@@ -10,12 +10,12 @@ export const formatDate = (isoString) => {
   }
 };
 
-// Formatear número de teléfono (WhatsApp ID) para que se vea con prefijo y espacios
-export const formatPhoneNumber = (chatId) => {
-  if (!chatId) return "";
-  const clean = String(chatId).replace(/\D/g, "");
-  if (clean.length < 5) return clean;
-  return `+${clean.slice(0, 2)} ${clean.slice(2, 5)} ${clean.slice(5)}`;
+// Muestra el número exactamente como lo guarda WhatsApp: +prefijoresto
+export const formatPhoneNumber = (contactId) => {
+  if (!contactId) return "";
+  const clean = String(contactId).replace(/\D/g, "");
+  if (!clean) return String(contactId);
+  return `+${clean}`;
 };
 
 // Generamos las iniciales del avatar a partir del chatId
