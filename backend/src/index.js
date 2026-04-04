@@ -51,14 +51,21 @@ const storageLocal = multer.diskStorage({
 const upload = multer({ storage: storageLocal });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: function(origin, callback) {
-    // Permitir localhost en cualquier puerto durante desarrollo
-    if (!origin || origin.match(/^http:\/\/localhost:\d+$/)) {
-        callback(null, true);
-    } else {
-        callback(new Error('CORS no permitido'));
+// Lista blanca de orígenes seguros (Evita conexiones de sitios maliciosos)
+const allowedOrigins = process.env.CORS_ORIGINS 
+    ? process.env.CORS_ORIGINS.split(',') 
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'];
+
+app.use(cors({ 
+    origin: function(origin, callback) {
+        // Permitir peticiones sin origen (como las internas de Postman/backend) o si están en la lista blanca
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Bloqueado por la Política de CORS (Origen no autorizado)'));
+        }
     }
-}}));
+}));
 app.use(express.json());
 // Servir archivos estáticos de la carpeta public
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));

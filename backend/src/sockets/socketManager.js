@@ -6,9 +6,13 @@ let io;
  * Inicializamos el servidor de WebSockets adjuntándolo al servidor HTTP de Express
  */
 const initSocket = (httpServer) => {
+  const allowedOrigins = process.env.CORS_ORIGINS 
+      ? process.env.CORS_ORIGINS.split(',') 
+      : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'];
+
   io = new Server(httpServer, {
     cors: {
-      origin: "*", // Permitir cualquier puerto local (Vite a veces salta a 5174 o 5175)
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
     },
   });
