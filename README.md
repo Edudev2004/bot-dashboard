@@ -6,7 +6,7 @@
 
 Bienvenido a **Arbora**, la solución definitiva para gestionar y visualizar tus flujos de chatbots en WhatsApp y Telegram de manera profesional. Este proyecto es un panel de control moderno, intuitivo y potente diseñado para ofrecer una experiencia de usuario premium con analíticas en tiempo real y un editor de flujos visual.
 
-![Dashboard Preview](https://github.com/Edudev2004/Edudev2004/blob/main/Arbora%20Mockup.png?raw=truew)
+![Dashboard Preview](https://github.com/Edudev2004/Edudev2004/blob/main/Arbora%20Mockup.png?raw=true)
 
 ## Características Principales
 
