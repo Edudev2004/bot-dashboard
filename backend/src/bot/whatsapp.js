@@ -209,7 +209,7 @@ const initBotForUser = async (userId, instanceId = null) => {
                     if (session && session.currentNodeId) {
                         await clearSession(userId, contactNumber);
                         await client.sendMessage(msg.from, config.timeoutCloseMsg || "❌ Chat cerrado por inactividad. Escribe cualquier mensaje para volver a iniciar.");
-                        userTimers.delete(timerKey);
+                        userTimers.delete(queueKey);
                     }
                 } catch (e) { console.error("Error en closeTimer:", e.message); }
             }, activeTimeoutMinutes * 60 * 1000); // Cierre
